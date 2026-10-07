@@ -330,6 +330,75 @@ pcall(function()
 	gui.ClipToDeviceSafeArea = true
 end)
 
+local function findLobbyBrandWall()
+	local lobby = workspace:FindFirstChild("RegularLobby")
+	local mainLobby = lobby and lobby:FindFirstChild("MainLobby")
+	local parts = mainLobby and mainLobby:FindFirstChild("Parts")
+	if not parts then
+		return
+	end
+	for _, part in ipairs(parts:GetChildren()) do
+		if part:IsA("BasePart") then
+			local size = part.Size
+			if math.abs(size.X - 13.7) < 0.3 and math.abs(size.Y - 14.5) < 0.3 and math.abs(size.Z - 0.5) < 0.2 then
+				return part
+			end
+		end
+	end
+end
+
+local function attachLobbyBrand()
+	local wall = findLobbyBrandWall()
+	if not wall then
+		return
+	end
+	local old = wall:FindFirstChild("RockHubWallBrand")
+	if old then
+		old:Destroy()
+	end
+	lobbyBrand = create("Part", {
+		Name = "RockHubWallBrand",
+		Anchored = true,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+		Transparency = 1,
+		Size = Vector3.new(24, 4, 0.1),
+		CFrame = wall.CFrame * CFrame.new(0, wall.Size.Y / 2 + 3.2, wall.Size.Z / 2 + 0.06),
+		Parent = wall,
+	})
+	local surface = create("SurfaceGui", {
+		Name = "Surface",
+		Face = Enum.NormalId.Back,
+		AlwaysOnTop = false,
+		LightInfluence = 0,
+		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
+		PixelsPerStud = 60,
+		Parent = lobbyBrand,
+	})
+	create("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		RichText = true,
+		Text = '<font color="#FFFFFF">ROCK</font> <font color="#A8FF3E">dimas</font>',
+		TextScaled = true,
+		TextColor3 = Color3.new(1, 1, 1),
+		TextStrokeColor3 = Color3.new(0, 0, 0),
+		TextStrokeTransparency = 0,
+		Parent = surface,
+	})
+end
+
+task.spawn(function()
+	while gui.Parent do
+		if not lobbyBrand or not lobbyBrand.Parent then
+			attachLobbyBrand()
+		end
+		task.wait(2)
+	end
+end)
 local blur = create("BlurEffect", { Name = "RockHubBlur", Size = 0, Parent = Lighting })
 local main = create("Frame", {
 	Name = "Main",
@@ -1082,7 +1151,7 @@ return (function(...)
 		end
 	end)
 	local dirty, dirtyAt = false, 0
-	local noSave = {}
+	local noSave = { ["Troll Fun/Hug/Hug"] = true }
 
 	local function setConfig(key, v)
 		if noSave[key] then
@@ -2675,6 +2744,115 @@ return (function(...)
 		}
 	end
 
+	local charMods = { speed = nil, jump = nil, infJump = false }
+
+	local function getHumanoid()
+		local character = player.Character
+		return character and character:FindFirstChildOfClass("Humanoid")
+	end
+
+	connect(RunService.Heartbeat, function()
+		local hum = getHumanoid()
+		if hum then
+			if charMods.speed and hum.WalkSpeed ~= charMods.speed then
+				hum.WalkSpeed = charMods.speed
+			end
+			if charMods.jump then
+				hum.UseJumpPower = true
+				if hum.JumpPower ~= charMods.jump then
+					hum.JumpPower = charMods.jump
+				end
+			end
+		end
+	end)
+	local noclipParts = {}
+	connect(RunService.Stepped, function()
+		if not charMods.noclip then
+			return
+		end
+		local char = player.Character
+		if not char then
+			return
+		end
+		for _, part in ipairs(char:GetDescendants()) do
+			if part:IsA("BasePart") and part.CanCollide then
+				noclipParts[part] = true
+				part.CanCollide = false
+			end
+		end
+	end)
+
+	local function disableNoclip()
+		charMods.noclip = false
+		for part in pairs(noclipParts) do
+			if part.Parent then
+				part.CanCollide = true
+			end
+		end
+		table.clear(noclipParts)
+	end
+
+	local flingParts = {}
+	local safeCFrame, safeTime = nil, 0
+	connect(RunService.Stepped, function()
+		if not charMods.antiFling then
+			return
+		end
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= player and p.Character then
+				for _, part in ipairs(p.Character:GetDescendants()) do
+					if part:IsA("BasePart") and part.CanCollide then
+						flingParts[part] = true
+						part.CanCollide = false
+					end
+				end
+			end
+		end
+	end)
+	connect(RunService.Heartbeat, function()
+		if not charMods.antiFling then
+			return
+		end
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		if not hrp then
+			return
+		end
+		local v, w = hrp.AssemblyLinearVelocity, hrp.AssemblyAngularVelocity
+		if v.Magnitude > 200 or w.Magnitude > 60 then
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.AssemblyLinearVelocity = Vector3.zero
+					part.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+			if safeCFrame then
+				hrp.CFrame = safeCFrame
+			end
+		elseif os.clock() - safeTime > 0.1 then
+			safeCFrame, safeTime = hrp.CFrame, os.clock()
+		end
+	end)
+
+	local function disableAntiFling()
+		charMods.antiFling = false
+		for part in pairs(flingParts) do
+			if part.Parent then
+				part.CanCollide = true
+			end
+		end
+		table.clear(flingParts)
+	end
+
+	connect(UserInputService.JumpRequest, function()
+		if not charMods.infJump then
+			return
+		end
+		local hum = getHumanoid()
+		if hum and hum.Health > 0 then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
 	local menuSeq = 0
 	local showMascot
 	local mascot = {}
@@ -3497,86 +3675,4847 @@ return (function(...)
 				img.Rotation = angle
 				img.ImageTransparency = math.clamp(1 - p * 3, 0, 1)
 			end)
-			mascot.name = "CoolRock"
 			loadMascot(mascot.name)
 		end
+		local mainTab = addTab("Main", "gear", "speed, jumps and character")
+		local droneTab = addTab("SRC Drone", "drone", "Shahed and FPV drone controls")
+		addSeparator()
+		local trollTab = addTab("Troll Fun", "smile", "fun and trolling")
+		local playersTab = addTab("Players", "smile", "player list and quick actions")
+		local animsTab = addTab("Free anims", "move", "animation packs for your character")
+		local stopAnims
+		addSeparator()
+		local visualsTab = addTab("Visuals", "eye", "realistic shader, light and sky")
+		setSubTabs(visualsTab, { "Shader", "ESP", "BackTrack", "Models" })
+		local stopCursor
+		local stopEsp
+		local stopSpin
+		local stopBackTrack
+		local stopSkinChanger
+		local stopShader
+		local stopVoteDupe
+		local stopBunnyModel
+		local stopAvatar
+		local stopAura
+		local stopOrbs
+		local stopSkyWorms
+		local stopAwm
+		local stopRoleFling
+		local playerFlingAction
+		local playerKnifeKill
+		local playerGunKill
+		local droneCleanup
+		local stopPlayersActions
+		local function findTool(p, name)
+			local char, backpack = p and p.Character, p and p:FindFirstChildOfClass("Backpack")
+			return char and char:FindFirstChild(name) or backpack and backpack:FindFirstChild(name)
+		end
 
-		hud.setWatermark(true)
+		local function alive(p)
+			local char = p and p.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then
+				return hrp, hum, char
+			end
+		end
 
--- SRC Drone-only runtime helpers.
-local charMods = { antiFling = false }
-local desync = { real = nil, pause = 0, on = false, force = false }
-local playerFlingAction
-local droneCleanup
+		local lobbyCache, lobbyCFrame, lobbyHalfSize, lobbyCacheAt
+		local function inLobby(pos)
+			local now = os.clock()
+			if not lobbyCacheAt or now - lobbyCacheAt > 1 or not lobbyCache or not lobbyCache.Parent then
+				lobbyCacheAt = now
+				lobbyCache = workspace:FindFirstChild("Lobby") or workspace:FindFirstChild("RegularLobby")
+				lobbyCFrame, lobbyHalfSize = nil, nil
+				if lobbyCache then
+					local ok, cf, size = pcall(lobbyCache.GetBoundingBox, lobbyCache)
+					if ok then
+						lobbyCFrame = cf
+						lobbyHalfSize = size / 2 + Vector3.new(10, 30, 10)
+					end
+				end
+			end
+			if not lobbyCFrame then
+				return false
+			end
+			local rel = lobbyCFrame:PointToObjectSpace(pos)
+			return math.abs(rel.X) <= lobbyHalfSize.X and math.abs(rel.Y) <= lobbyHalfSize.Y and math.abs(rel.Z) <= lobbyHalfSize.Z
+		end
 
-local function findTool(p, name)
-local char, backpack = p and p.Character, p and p:FindFirstChildOfClass("Backpack")
-return char and char:FindFirstChild(name) or backpack and backpack:FindFirstChild(name)
-end
+		local desync = { real = nil, pause = 0, on = false }
+		local function pauseDesync(root)
+			if desync.real and root and root.Parent then
+				root.CFrame = desync.real
+			end
+			desync.real = nil
+			desync.pause += 1
+		end
 
-local function alive(p)
-local char = p and p.Character
-local hrp = char and char:FindFirstChild("HumanoidRootPart")
-local hum = char and char:FindFirstChildOfClass("Humanoid")
-if hrp and hum and hum.Health > 0 then
-return hrp, hum, char
-end
-end
+		local function resumeDesync()
+			desync.pause = math.max(0, desync.pause - 1)
+		end
 
-local function inLobby(pos)
-local lobby = workspace:FindFirstChild("Lobby") or workspace:FindFirstChild("RegularLobby")
-if not lobby then return false end
-local ok, cf, size = pcall(lobby.GetBoundingBox, lobby)
-if not ok then return false end
-local rel = cf:PointToObjectSpace(pos)
-local half = size / 2 + Vector3.new(10, 30, 10)
-return math.abs(rel.X) <= half.X and math.abs(rel.Y) <= half.Y and math.abs(rel.Z) <= half.Z
-end
+		addSeparator()
+		local settingsTab = addTab("Settings", "sliders", "menu settings")
+		updateSidebarCanvas()
+		local notify
+		local playerSection = addSection(mainTab, "Player")
+		playerSection:Slider("WalkSpeed", 16, 150, 16, function(v)
+			charMods.speed = v
+		end)
+		playerSection:Slider("JumpPower", 50, 250, 50, function(v)
+			charMods.jump = v
+		end)
+		playerSection:Toggle("Infinite Jump", "jump again in the air", function(on)
+			charMods.infJump = on
+		end)
+		playerSection:Toggle("Anti Fling", "nobody can fling you", function(on)
+			if on then
+				charMods.antiFling = true
+			else
+				disableAntiFling()
+			end
+			notify("Anti Fling: " .. (on and "On" or "Off"), on and "you can't be flung" or "disabled")
+		end)
+		playerSection:Toggle("Noclip", "walk through walls", function(on)
+			if on then
+				charMods.noclip = true
+			else
+				disableNoclip()
+			end
+			notify("Noclip: " .. (on and "On" or "Off"), on and "walls can't stop you" or "collision is back")
+		end)
+		local otherSection = addSection(mainTab, "Other")
+		otherSection:Button("Reset stats", "speed and jump back to default", function()
+			charMods.speed, charMods.jump = nil, nil
+			local hum = getHumanoid()
+			if hum then
+				hum.WalkSpeed = 16
+				hum.JumpPower = 50
+			end
+		end)
+		otherSection:Button("Respawn", "kill your character", function()
+			local hum = getHumanoid()
+			if hum then
+				hum.Health = 0
+			end
+		end)
+		local notifications = {}
 
-local function pauseDesync(root)
-if desync.real and root and root.Parent then root.CFrame = desync.real end
-desync.real = nil
-desync.pause += 1
-end
+		local function notifyStyle(head)
+			local h = head:lower()
+			if h:find("murderer") then
+				return Color3.fromRGB(255, 70, 70), "!"
+			end
+			if h:find("sheriff") then
+				return Color3.fromRGB(70, 150, 255), "!"
+			end
+			if h:find(": on") then
+				return Color3.fromRGB(110, 230, 140), "check"
+			end
+			if h:find(": off") then
+				return Color3.fromRGB(150, 150, 158), "cross"
+			end
+			return accentColor, "i"
+		end
 
-local function resumeDesync()
-desync.pause = math.max(0, desync.pause - 1)
-end
+		local function layoutNotifications()
+			for i, t in ipairs(notifications) do
+				local y = -20 - (i - 1) * 68
+				tween(t.card, 0.35, { Position = UDim2.new(1, -20, 1, y) }, Enum.EasingDirection.Out, Enum.EasingStyle.Quint)
+			end
+		end
 
-local function disableAntiFling()
-	charMods.antiFling = false
-end
+		notify = function(head, body)
+			if loading then
+				return
+			end
+			local accent, kind = notifyStyle(head)
+			local card = create("TextButton", {
+				Text = "",
+				AutoButtonColor = false,
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, 330, 1, -20),
+				Size = UDim2.fromOffset(270, 58),
+				BackgroundColor3 = panelColor,
+				ZIndex = 150,
+				Parent = gui,
+			})
+			addCorner(card, 12)
+			create("UIGradient", {
+				Rotation = 90,
+				Color = ColorSequence.new(accentColor, Color3.fromRGB(170, 170, 170)),
+				Parent = card,
+			})
+			local st = create("UIStroke", {
+				Color = accent,
+				Transparency = 0.15,
+				Thickness = 1,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Parent = card,
+			})
+			local scale = create("UIScale", { Scale = 0.88, Parent = card })
+			local glow = create("Frame", {
+				Size = UDim2.new(0.7, 0, 1, 0),
+				BackgroundColor3 = accent,
+				BorderSizePixel = 0,
+				ZIndex = 150,
+				Parent = card,
+			})
+			addCorner(glow, 12)
+			create("UIGradient", {
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.84), NumberSequenceKeypoint.new(1, 1) }),
+				Parent = glow,
+			})
+			local icon = create("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0, 29, 0.5, -1),
+				Size = UDim2.fromOffset(34, 34),
+				BackgroundColor3 = accent,
+				BackgroundTransparency = 0.82,
+				ZIndex = 151,
+				Parent = card,
+			})
+			makeRound(icon)
+			create("UIStroke", { Color = accent, Transparency = 0.3, Thickness = 1.2, Parent = icon })
+			local iconScale = create("UIScale", { Scale = 0, Parent = icon })
+			if kind == "check" then
+				for _, s in ipairs({ { 10, 17.5, 15, 22.5 }, { 15, 22.5, 24.5, 12 } }) do
+					line(icon, s[1], s[2], s[3], s[4], 2.6, accent).ZIndex = 152
+				end
+			elseif kind == "cross" then
+				for _, s in ipairs({ { 11.5, 11.5, 22.5, 22.5 }, { 22.5, 11.5, 11.5, 22.5 } }) do
+					line(icon, s[1], s[2], s[3], s[4], 2.4, accent).ZIndex = 152
+				end
+			else
+				create("TextLabel", {
+					Text = kind,
+					Font = Enum.Font.GothamBlack,
+					TextSize = 17,
+					TextColor3 = accent,
+					BackgroundTransparency = 1,
+					Size = UDim2.fromScale(1, 1),
+					ZIndex = 152,
+					Parent = icon,
+				})
+			end
+			create("TextLabel", {
+				Text = head,
+				Font = Enum.Font.GothamBold,
+				TextSize = 13,
+				TextColor3 = accentColor,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(56, 10),
+				Size = UDim2.new(1, -68, 0, 17),
+				ZIndex = 151,
+				Parent = card,
+			})
+			create("TextLabel", {
+				Text = body or "",
+				Font = Enum.Font.Gotham,
+				TextSize = 11,
+				TextColor3 = Color3.fromRGB(165, 165, 172),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(56, 28),
+				Size = UDim2.new(1, -68, 0, 15),
+				ZIndex = 151,
+				Parent = card,
+			})
+			local bar = create("Frame", {
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 14, 1, -6),
+				Size = UDim2.new(1, -28, 0, 2),
+				BackgroundColor3 = accent,
+				BackgroundTransparency = 0.25,
+				BorderSizePixel = 0,
+				ZIndex = 151,
+				Parent = card,
+			})
+			makeRound(bar)
+			local t = { card = card, alive = true }
+			table.insert(notifications, 1, t)
+			while #notifications > 4 do
+				local old = table.remove(notifications)
+				old.alive = false
+				old.card:Destroy()
+			end
+			layoutNotifications()
+			tween(scale, 0.45, { Scale = 1 }, Enum.EasingDirection.Out, Enum.EasingStyle.Back)
+			task.delay(0.12, function()
+				if card.Parent then
+					tween(iconScale, 0.45, { Scale = 1 }, Enum.EasingDirection.Out, Enum.EasingStyle.Back)
+				end
+			end)
+			st.Transparency = 0
+			tween(st, 0.8, { Transparency = 0.6 })
+			tween(bar, 2.8, { Size = UDim2.new(0, 0, 0, 2) }, Enum.EasingDirection.InOut, Enum.EasingStyle.Linear)
 
-local function notify(head, body)
-local card = create("TextLabel", {
-Name = "SRCDroneNotice",
-AnchorPoint = Vector2.new(1, 0),
-Position = UDim2.new(1, -18, 0, 18),
-Size = UDim2.fromOffset(310, 48),
-BackgroundColor3 = panelColor,
-Text = tostring(head) .. (body and ("\n" .. tostring(body)) or ""),
-Font = Enum.Font.Gotham,
-TextSize = 12,
-TextColor3 = textColor,
-TextXAlignment = Enum.TextXAlignment.Left,
-TextWrapped = true,
-ZIndex = 180,
-Parent = gui,
-})
-addCorner(card, 8)
-create("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10), Parent = card })
-task.delay(2.8, function()
-if card.Parent then
-local fade = tween(card, 0.2, { TextTransparency = 1, BackgroundTransparency = 1 })
-fade.Completed:Connect(function() if card.Parent then card:Destroy() end end)
-end
-end)
-end
+			local function close()
+				if not t.alive then
+					return
+				end
+				t.alive = false
+				local i = table.find(notifications, t)
+				if i then
+					table.remove(notifications, i)
+				end
+				layoutNotifications()
+				tween(scale, 0.25, { Scale = 0.9 }, Enum.EasingDirection.In)
+				local out = tween(card, 0.28, { Position = UDim2.new(1, 330, card.Position.Y.Scale, card.Position.Y.Offset) }, Enum.EasingDirection.In, Enum.EasingStyle.Quint)
+				out.Completed:Connect(function()
+					card:Destroy()
+				end)
+			end
 
+			connect(card.MouseEnter, function()
+				tween(st, 0.15, { Transparency = 0.1 })
+			end)
+			connect(card.MouseLeave, function()
+				tween(st, 0.25, { Transparency = 0.6 })
+			end)
+			connect(card.MouseButton1Click, close)
+			task.delay(2.8, close)
+		end
 
-local droneTab = addTab("SRC Drone", "drone", "Shahed and FPV drone controls")
+		
 		do
-			local fling = { busy = false, cancel = false }
+			local iface = addSection(settingsTab, "Interface")
+			iface:Keybind("Menu key", "click and press any key", function()
+				return toggleKey
+			end, function(k)
+				toggleKey = k
+			end)
+			iface:Slider("Background blur", 0, 40, blurSize, function(v)
+				blurSize = v
+				if menuOpen then
+					blur.Size = v
+				end
+			end)
+			local wmToggle
+			wmToggle = iface:Toggle("Watermark", "fps, ping, time - click it to open the menu", function(on)
+				if not on and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+					notify("Watermark", "needed to open the menu on mobile")
+					task.defer(wmToggle.Set, true)
+					return
+				end
+				hud.setWatermark(on)
+			end)
+			wmToggle.Set(true)
+			local mascot2 = addSection(settingsTab, "Mascot")
+			local mascotToggle = mascot2:Toggle("CoolRock", "show the animated mascot above the menu", function(on)
+				mascot.set(on and "CoolRock" or "Off")
+			end)
+			mascotToggle.Set(mascot.name ~= "Off", true)
+			local configsSec = addSection(settingsTab, "Configs")
+			local configName = configsSec:Input("Name", "up to 32 characters", "enter config name")
+
+			local function profileNames()
+				local names = {}
+				for name, data in pairs(profiles) do
+					if type(name) == "string" and type(data) == "table" then
+						table.insert(names, name)
+					end
+				end
+				table.sort(names, function(a, b)
+					return a:lower() < b:lower()
+				end)
+				return names
+			end
+			local profileDropdown = configsSec:Dropdown("Saved configs", "choose a config", profileNames(), "select...", function(name)
+				configName.Set(name)
+			end)
+
+			local function refreshProfileList()
+				profileDropdown.Update(profileNames())
+			end
+
+			local function enteredProfileName()
+				local name, err = normalizeProfileName(configName.Get())
+				if not name then
+					notify("Config", err)
+					configName.Focus()
+				end
+				return name
+			end
+
+			configsSec:Button("Create", "save current settings as a new config", function()
+				local name = enteredProfileName()
+				if not name then
+					return
+				end
+				if profiles[name] then
+					notify("Config", "that name already exists")
+					return
+				end
+				profiles[name] = snapshotConfig()
+				local ok, err = saveProfiles()
+				if not ok then
+					profiles[name] = nil
+					notify("Config", "create failed: " .. tostring(err))
+					return
+				end
+				configName.Set(name)
+				refreshProfileList()
+				profileDropdown.Set(name, true)
+				notify("Config", 'created "' .. name .. '"')
+			end)
+			configsSec:Button("Save", "overwrite the named config with current settings", function()
+				local name = enteredProfileName()
+				if not name then
+					return
+				end
+				if not profiles[name] then
+					notify("Config", "config not found - create it first")
+					return
+				end
+				local previous = profiles[name]
+				profiles[name] = snapshotConfig()
+				local ok, err = saveProfiles()
+				if not ok then
+					profiles[name] = previous
+					notify("Config", "save failed: " .. tostring(err))
+					return
+				end
+				notify("Config", 'saved "' .. name .. '"')
+			end)
+			configsSec:Button("Load", "apply every setting from the named config", function()
+				local name = enteredProfileName()
+				if not name then
+					return
+				end
+				local profile = profiles[name]
+				if type(profile) ~= "table" then
+					notify("Config", "config not found")
+					return
+				end
+				applyConfig(profile)
+				configName.Set(name)
+				profileDropdown.Set(name, true)
+				notify("Config", 'loaded "' .. name .. '"')
+			end)
+			configsSec:Button("Delete", "permanently remove the named config", function()
+				local name = enteredProfileName()
+				if not name then
+					return
+				end
+				local previous = profiles[name]
+				if type(previous) ~= "table" then
+					notify("Config", "config not found")
+					return
+				end
+				profiles[name] = nil
+				local ok, err = saveProfiles()
+				if not ok then
+					profiles[name] = previous
+					notify("Config", "delete failed: " .. tostring(err))
+					return
+				end
+				configName.Set("")
+				refreshProfileList()
+				notify("Config", 'deleted "' .. name .. '"')
+			end)
+			refreshProfileList()
+			local scriptSec = addSection(settingsTab, "Script")
+			scriptSec:Button("Reset config", "restore defaults for the active settings", function()
+				applyConfig({})
+				notify("Config", "active settings reset")
+			end)
+			scriptSec:Button("Unload", "remove the menu and reset all", function()
+				_G.RockHubUnload()
+			end)
+		end
+		do
+			local terrain = workspace.Terrain
+			local presets2 = {
+				Natural = {
+					exposure = 2,
+					contrast = 12,
+					saturation = 10,
+					warmth = 6,
+					bloom = 30,
+					rays = 15,
+					shadows = 25,
+					dof = 12,
+					fog = 25,
+					vignette = 25,
+					time = 28,
+					timeMode = "Game",
+				},
+				["Golden Hour"] = {
+					exposure = 3,
+					contrast = 16,
+					saturation = 20,
+					warmth = 38,
+					bloom = 55,
+					rays = 45,
+					shadows = 40,
+					dof = 20,
+					fog = 40,
+					vignette = 35,
+					time = 35,
+					timeMode = "Custom",
+				},
+				Cinematic = {
+					exposure = 0,
+					contrast = 28,
+					saturation = -8,
+					warmth = -8,
+					bloom = 40,
+					rays = 12,
+					shadows = 45,
+					dof = 45,
+					fog = 35,
+					vignette = 55,
+					time = 30,
+					timeMode = "Game",
+				},
+				Moody = {
+					exposure = -3,
+					contrast = 32,
+					saturation = -30,
+					warmth = -14,
+					bloom = 25,
+					rays = 6,
+					shadows = 60,
+					dof = 30,
+					fog = 65,
+					vignette = 60,
+					time = 16,
+					timeMode = "Custom",
+				},
+				Night = {
+					exposure = 6,
+					contrast = 22,
+					saturation = -18,
+					warmth = -32,
+					bloom = 65,
+					rays = 0,
+					shadows = 50,
+					dof = 20,
+					fog = 45,
+					vignette = 50,
+					time = 0,
+					timeMode = "Custom",
+				},
+			}
+			local presetNames = { "Natural", "Golden Hour", "Cinematic", "Moody", "Night" }
+			local st = { on = false, preset = "Natural", clouds = true }
+			for k, v in pairs(presets2.Natural) do
+				st[k] = v
+			end
+			local lightProps = { "Brightness", "ExposureCompensation", "GlobalShadows", "ShadowSoftness", "EnvironmentDiffuseScale", "EnvironmentSpecularScale", "Ambient", "OutdoorAmbient", "ClockTime" }
+			local fx = {}
+			local saved
+			local clouds
+			local vignetteGui = create("ScreenGui", {
+				Name = "RockHubFX",
+				IgnoreGuiInset = true,
+				ResetOnSpawn = false,
+				DisplayOrder = -1,
+				Enabled = false,
+				Parent = gui.Parent,
+			})
+			local vignetteGrads = {}
+			for _, e in ipairs({
+				{ Vector2.new(0, 0), UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.4), 90 },
+				{ Vector2.new(0, 1), UDim2.fromScale(0, 1), UDim2.fromScale(1, 0.4), -90 },
+				{ Vector2.new(0, 0), UDim2.fromScale(0, 0), UDim2.fromScale(0.3, 1), 0 },
+				{ Vector2.new(1, 0), UDim2.fromScale(1, 0), UDim2.fromScale(0.3, 1), 180 },
+			}) do
+				local f = create("Frame", {
+					AnchorPoint = e[1],
+					Position = e[2],
+					Size = e[3],
+					BackgroundColor3 = Color3.new(0, 0, 0),
+					BorderSizePixel = 0,
+					Parent = vignetteGui,
+				})
+				table.insert(vignetteGrads, create("UIGradient", { Rotation = e[4], Parent = f }))
+			end
+
+			local function updateVignette()
+				local a = 1 - st.vignette / 100 * 0.75
+				local seq = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, a),
+					NumberSequenceKeypoint.new(0.45, 1 - (1 - a) * 0.3),
+					NumberSequenceKeypoint.new(1, 1),
+				})
+				for _, g in ipairs(vignetteGrads) do
+					g.Transparency = seq
+				end
+				vignetteGui.Enabled = st.on and st.vignette > 0
+			end
+
+			local function applyLighting()
+				if not st.on then
+					return
+				end
+				pcall(function()
+					Lighting.GlobalShadows = true
+					Lighting.ShadowSoftness = st.shadows / 100
+					Lighting.ExposureCompensation = st.exposure / 10
+					Lighting.EnvironmentDiffuseScale = 1
+					Lighting.EnvironmentSpecularScale = 1
+					Lighting.Brightness = 3
+					Lighting.Ambient = Color3.fromRGB(38, 40, 46)
+					Lighting.OutdoorAmbient = Color3.fromRGB(118, 120, 130)
+					if st.timeMode == "Custom" then
+						Lighting.ClockTime = st.time / 2
+					end
+				end)
+			end
+
+			local function updateClouds()
+				local want = st.on and st.clouds
+				if want and not clouds and not terrain:FindFirstChildOfClass("Clouds") then
+					clouds = create("Clouds", { Cover = 0.55, Density = 0.7, Color = Color3.fromRGB(245, 245, 250), Parent = terrain })
+				elseif not want and clouds then
+					clouds:Destroy()
+					clouds = nil
+				end
+			end
+
+			local function apply()
+				if not st.on or not fx.cc then
+					return
+				end
+				local w = st.warmth / 50
+				local tint = w >= 0 and Color3.new(1, 1 - 0.08 * w, 1 - 0.24 * w) or Color3.new(1 + 0.24 * w, 1 + 0.07 * w, 1)
+				fx.cc.Brightness = 0.01
+				fx.cc.Contrast = st.contrast / 100
+				fx.cc.Saturation = st.saturation / 100
+				fx.cc.TintColor = tint
+				fx.bloom.Enabled = st.bloom > 0
+				fx.bloom.Intensity = st.bloom / 100 * 1.4
+				fx.bloom.Size = 18 + st.bloom * 0.34
+				fx.bloom.Threshold = 1.35 - st.bloom / 100 * 0.5
+				fx.rays.Enabled = st.rays > 0
+				fx.rays.Intensity = st.rays / 100 * 0.35
+				fx.rays.Spread = 0.6 + st.rays / 100 * 0.3
+				fx.dof.Enabled = st.dof > 0
+				fx.dof.FarIntensity = st.dof / 100 * 0.75
+				fx.dof.NearIntensity = 0
+				fx.dof.FocusDistance = 30
+				fx.dof.InFocusRadius = 70 - st.dof * 0.4
+				local f = st.fog / 100
+				fx.atmo.Density = 0.15 + f * 0.5
+				fx.atmo.Offset = 0.2
+				fx.atmo.Haze = f * 3
+				fx.atmo.Glare = st.rays / 100 * 2
+				fx.atmo.Color = Color3.fromRGB(199, 209, 222):Lerp(Color3.fromRGB(255, 212, 168), math.max(w, 0))
+				fx.atmo.Decay = Color3.fromRGB(106, 112, 125):Lerp(Color3.fromRGB(150, 96, 60), math.max(w, 0))
+				applyLighting()
+				updateVignette()
+				updateClouds()
+			end
+
+			local function enable()
+				saved = { light = {}, effects = {}, atmos = {}, timeTouched = st.timeMode == "Custom" }
+				for _, p in ipairs(lightProps) do
+					pcall(function()
+						saved.light[p] = Lighting[p]
+					end)
+				end
+				for _, inst in ipairs(Lighting:GetChildren()) do
+					if inst:IsA("PostEffect") and inst ~= blur and inst.Enabled then
+						inst.Enabled = false
+						table.insert(saved.effects, inst)
+					elseif inst:IsA("Atmosphere") then
+						table.insert(saved.atmos, inst)
+						inst.Parent = nil
+					end
+				end
+				fx.cc = create("ColorCorrectionEffect", { Name = "RockHubRealisticColor", Parent = Lighting })
+				fx.bloom = create("BloomEffect", { Name = "RockHubRealisticBloom", Parent = Lighting })
+				fx.rays = create("SunRaysEffect", { Name = "RockHubRealisticRays", Parent = Lighting })
+				fx.dof = create("DepthOfFieldEffect", { Name = "RockHubRealisticDOF", Parent = Lighting })
+				fx.atmo = create("Atmosphere", { Name = "RockHubRealisticAtmosphere", Parent = Lighting })
+				apply()
+			end
+
+			local function disable()
+				for _, o in pairs(fx) do
+					o:Destroy()
+				end
+				table.clear(fx)
+				updateClouds()
+				vignetteGui.Enabled = false
+				if saved then
+					for p, v in pairs(saved.light) do
+						if p ~= "ClockTime" or saved.timeTouched then
+							pcall(function()
+								Lighting[p] = v
+							end)
+						end
+					end
+					for _, o in ipairs(saved.effects) do
+						pcall(function()
+							o.Enabled = true
+						end)
+					end
+					for _, o in ipairs(saved.atmos) do
+						pcall(function()
+							o.Parent = Lighting
+						end)
+					end
+					saved = nil
+				end
+			end
+
+			local acc = 0
+			connect(RunService.Heartbeat, function(dt)
+				if not st.on then
+					return
+				end
+				acc += dt
+				if acc < 0.5 then
+					return
+				end
+				acc = 0
+				applyLighting()
+			end)
+			local sliders = {}
+			local timeSeg
+
+			local function setMode(m)
+				st.timeMode = m
+				if m == "Custom" then
+					if saved then
+						saved.timeTouched = true
+					end
+					applyLighting()
+				elseif saved and saved.light.ClockTime then
+					pcall(function()
+						Lighting.ClockTime = saved.light.ClockTime
+					end)
+				end
+			end
+
+			local function applyPreset(name)
+				local p = presets2[name]
+				if not p then
+					return
+				end
+				st.preset = name
+				for k, v in pairs(p) do
+					if k == "timeMode" then
+						if timeSeg then
+							timeSeg.Set(v, true)
+						end
+						setMode(v)
+					else
+						st[k] = v
+						if sliders[k] then
+							sliders[k].Set(v, true)
+						end
+					end
+				end
+				apply()
+			end
+
+			local function bindFx(key)
+				return function(v)
+					st[key] = v
+					apply()
+				end
+			end
+
+			local function fmtPct(v)
+				return v .. "%"
+			end
+
+			local function fmtSigned(v)
+				return (v > 0 and "+" or "") .. v .. "%"
+			end
+
+			local sec = addSection(visualsTab, "Realistic")
+			sec:Toggle("Enable", "real lighting, bloom, fog and color grading", function(on)
+				st.on = on
+				if on then
+					enable()
+				else
+					disable()
+				end
+				notify("Realistic: " .. (on and "On" or "Off"), on and "preset " .. st.preset or "lighting restored")
+			end)
+			sec:Select("Preset", "right click - previous", presetNames, st.preset, function(v)
+				applyPreset(v)
+				if st.on then
+					notify("Realistic", "preset " .. v)
+				end
+			end)
+			sec:Button("Reset", "back to the preset values", function()
+				applyPreset(st.preset)
+				notify("Realistic", st.preset .. " restored")
+			end)
+			local color = addSection(visualsTab, "Color"):Collapsible(true)
+			sliders.exposure = color:Slider("Exposure", -20, 20, st.exposure, bindFx("exposure"), function(v)
+				return string.format("%+.1f EV", v / 10)
+			end)
+			sliders.contrast = color:Slider("Contrast", -20, 50, st.contrast, bindFx("contrast"), fmtSigned)
+			sliders.saturation = color:Slider("Saturation", -50, 50, st.saturation, bindFx("saturation"), fmtSigned)
+			sliders.warmth = color:Slider("Warmth", -50, 50, st.warmth, bindFx("warmth"), function(v)
+				if v == 0 then
+					return "neutral"
+				end
+				return (v > 0 and "warm " or "cold ") .. math.abs(v)
+			end)
+			local light = addSection(visualsTab, "Light"):Collapsible(true)
+			sliders.bloom = light:Slider("Bloom", 0, 100, st.bloom, bindFx("bloom"), fmtPct)
+			sliders.rays = light:Slider("Sun rays", 0, 100, st.rays, bindFx("rays"), fmtPct)
+			sliders.shadows = light:Slider("Soft shadows", 0, 100, st.shadows, bindFx("shadows"), fmtPct)
+			sliders.dof = light:Slider("Depth of field", 0, 100, st.dof, bindFx("dof"), fmtPct)
+			sliders.fog = light:Slider("Atmosphere", 0, 100, st.fog, bindFx("fog"), fmtPct)
+			sliders.vignette = light:Slider("Vignette", 0, 100, st.vignette, bindFx("vignette"), fmtPct)
+			local sky = addSection(visualsTab, "Sky"):Collapsible(true)
+			timeSeg = sky:Segmented("Time", { "Game", "Custom" }, st.timeMode, setMode)
+			sliders.time = sky:Slider("Time of day", 0, 47, st.time, function(v)
+				st.time = v
+				if st.timeMode ~= "Custom" then
+					timeSeg.Set("Custom", true)
+					setMode("Custom")
+				end
+				applyLighting()
+			end, function(v)
+				return string.format("%02d:%02d", math.floor(v / 2), v % 2 * 30)
+			end)
+			local cloudsToggle = sky:Toggle("Clouds", "soft volumetric clouds", function(on)
+				st.clouds = on
+				updateClouds()
+			end)
+			cloudsToggle.Set(true, true)
+
+			stopShader = function()
+				if st.on then
+					st.on = false
+					disable()
+				end
+				vignetteGui:Destroy()
+			end
+		end
+		do
+			local esp = {
+				on = false,
+				roles = true,
+				dist = 1500,
+				color = "White",
+				chams = true,
+				box = true,
+				boxStyle = "Corners",
+				name = true,
+				distance = true,
+				health = true,
+				tracers = false,
+				tracerFrom = "Bottom",
+				fill = 30,
+				text = 12,
+				thick = 1,
+			}
+			local espGui = create("ScreenGui", {
+				Name = "RockHubESP",
+				IgnoreGuiInset = true,
+				ResetOnSpawn = false,
+				DisplayOrder = -2,
+				Enabled = false,
+				Parent = gui.Parent,
+			})
+			local chamsFolder = create("Folder", { Name = "Chams", Parent = espGui })
+			local black = Color3.new(0, 0, 0)
+			local red = Color3.fromRGB(255, 58, 58)
+			local blue = Color3.fromRGB(64, 150, 255)
+			local entries = {}
+
+			local serverRoles = {}
+			local alive = true
+			task.spawn(function()
+				local remote
+				while alive do
+					if esp.on and esp.roles then
+						if not remote or not remote.Parent then
+							remote = game:GetService("ReplicatedStorage"):FindFirstChild("GetPlayerData", true)
+						end
+						if remote and remote:IsA("RemoteFunction") then
+							local ok, data = pcall(remote.InvokeServer, remote)
+							if ok and type(data) == "table" then
+								local newRoles = {}
+								for name, d in pairs(data) do
+									if type(d) == "table" and type(d.Role) == "string" and not d.Dead and not d.Killed then
+										newRoles[name] = d.Role
+									end
+								end
+								serverRoles = newRoles
+							end
+						end
+					end
+					task.wait(1)
+				end
+			end)
+
+			local function getRole(plr)
+				if findTool(plr, "Knife") then
+					return "Murderer"
+				end
+				if findTool(plr, "Gun") then
+					return "Sheriff"
+				end
+				local r = serverRoles[plr.Name]
+				if r == "Murderer" then
+					return "Murderer"
+				end
+				if r == "Sheriff" or r == "Hero" then
+					return "Sheriff"
+				end
+			end
+
+			local function newLine(parent)
+				local f = create("Frame", { BackgroundColor3 = accentColor, BorderSizePixel = 0, Parent = parent })
+				create("UIStroke", { Color = black, Transparency = 0.5, Thickness = 1, Parent = f })
+				return f
+			end
+
+			local function label(parent, ay)
+				return create("TextLabel", {
+					Font = Enum.Font.GothamBold,
+					TextSize = 12,
+					TextColor3 = accentColor,
+					TextStrokeColor3 = black,
+					TextStrokeTransparency = 0.45,
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(0.5, ay),
+					Size = UDim2.fromOffset(220, 14),
+					Parent = parent,
+				})
+			end
+
+			local function add(plr)
+				if plr == player or entries[plr] then
+					return
+				end
+				local e = { plr = plr, alpha = 0, hp = 1, hue = math.random() }
+				e.root = create("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), Visible = false, Parent = espGui })
+				e.fill = create("Frame", { BackgroundColor3 = accentColor, BorderSizePixel = 0, Parent = e.root })
+				e.fillGrad = create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0.82), Parent = e.fill })
+				e.corners = {}
+				for i = 1, 8 do
+					e.corners[i] = newLine(e.root)
+				end
+				e.full = create("Frame", { BackgroundTransparency = 1, Parent = e.root })
+				e.fullStroke = create("UIStroke", { Color = accentColor, Thickness = 1, Parent = e.full })
+				e.fullShadow = create("Frame", { BackgroundTransparency = 1, Parent = e.root })
+				create("UIStroke", { Color = black, Transparency = 0.5, Thickness = 3, Parent = e.fullShadow })
+				e.name = label(e.root, 1)
+				e.info = label(e.root, 0)
+				e.info.Font = Enum.Font.GothamMedium
+				e.hpBg = create("Frame", { BackgroundColor3 = black, BackgroundTransparency = 0.35, BorderSizePixel = 0, Parent = e.root })
+				e.hpFill = create("Frame", {
+					AnchorPoint = Vector2.new(0, 1),
+					Position = UDim2.new(0, 1, 1, -1),
+					BackgroundColor3 = accentColor,
+					BorderSizePixel = 0,
+					Parent = e.hpBg,
+				})
+				e.tracer = newLine(e.root)
+				e.tracer.AnchorPoint = Vector2.new(0.5, 0.5)
+				e.hl = create("Highlight", { DepthMode = Enum.HighlightDepthMode.AlwaysOnTop, Enabled = false, Parent = chamsFolder })
+				entries[plr] = e
+			end
+
+			local function remove(plr)
+				local e = entries[plr]
+				if not e then
+					return
+				end
+				e.root:Destroy()
+				e.hl:Destroy()
+				entries[plr] = nil
+			end
+
+			for _, plr in ipairs(Players:GetPlayers()) do
+				add(plr)
+			end
+			connect(Players.PlayerAdded, add)
+			connect(Players.PlayerRemoving, remove)
+
+			local function hpColor(r)
+				return Color3.fromHSV(0.33 * math.clamp(r, 0, 1), 0.8, 1)
+			end
+
+			local function placeLine(f, x1, y1, x2, y2, th)
+				local dx, dy = x2 - x1, y2 - y1
+				f.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
+				f.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy), th)
+				f.Rotation = math.deg(math.atan2(dy, dx))
+			end
+
+			local function hideAll()
+				for _, e in pairs(entries) do
+					e.alpha = 0
+					e.root.Visible = false
+					e.hl.Enabled = false
+				end
+			end
+
+			connect(RunService.RenderStepped, function(dt)
+				if not esp.on then
+					return
+				end
+				local cam = workspace.CurrentCamera
+				if not cam then
+					return
+				end
+				local viewport = cam.ViewportSize
+				local camPos = cam.CFrame.Position
+				local now = os.clock()
+				local k = math.min(dt * 10, 1)
+				for plr, e in pairs(entries) do
+					local char = plr.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					local render = false
+					local dist = 0
+					if hrp and hum and hum.Health > 0 then
+						dist = (camPos - hrp.Position).Magnitude
+						if dist <= esp.dist then
+							local topBar2 = cam:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0))
+							local bottom = cam:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3.4, 0))
+							if topBar2.Z > 0 and bottom.Z > 0 then
+								local h = math.max(bottom.Y - topBar2.Y, 6)
+								local w = h * 0.6
+								local relX = (topBar2.X + bottom.X) / 2
+								render = relX > -w and relX < viewport.X + w and bottom.Y > 0 and topBar2.Y < viewport.Y
+								if render then
+									e.x, e.y, e.w, e.h, e.d = relX, topBar2.Y, w, h, dist
+								end
+							end
+						end
+					end
+					e.alpha += ((render and 1 or 0) - e.alpha) * k
+					if e.alpha < 0.02 or not e.x then
+						e.root.Visible = false
+						e.hl.Enabled = false
+						continue
+					end
+					e.root.Visible = true
+					local a = e.alpha
+					local fade = 1 - a
+					local hpFrac = hum and hum.MaxHealth > 0 and hum.Health / hum.MaxHealth or 0
+					e.hp += (hpFrac - e.hp) * math.min(dt * 8, 1)
+					if not e.roleAt or now - e.roleAt > 0.25 then
+						e.roleAt = now
+						local role = esp.roles and getRole(plr) or nil
+						if role and role ~= e.role then
+							notify(role == "Murderer" and "Murderer found" or "Sheriff found", plr.DisplayName)
+						end
+						e.role = role
+					end
+					local col = accentColor
+					if e.role == "Murderer" then
+						col = red
+					elseif e.role == "Sheriff" then
+						col = blue
+					elseif esp.color == "Health" then
+						col = hpColor(e.hp)
+					elseif esp.color == "Rainbow" then
+						col = Color3.fromHSV((now * 0.15 + e.hue) % 1, 0.55, 1)
+					end
+					local x0, y0 = e.x - e.w / 2, e.y
+					local x1, y1 = e.x + e.w / 2, e.y + e.h
+					local th = esp.thick
+					e.fill.Visible = esp.box
+					e.fill.Position = UDim2.fromOffset(x0, y0)
+					e.fill.Size = UDim2.fromOffset(e.w, e.h)
+					e.fill.BackgroundColor3 = col
+					e.fill.BackgroundTransparency = fade
+					local corners = esp.box and esp.boxStyle == "Corners"
+					local cw, ch = math.max(e.w * 0.28, 4), math.max(e.h * 0.2, 4)
+					local rects = {
+						{ x0, y0, cw, th },
+						{ x0, y0, th, ch },
+						{ x1 - cw, y0, cw, th },
+						{ x1 - th, y0, th, ch },
+						{ x0, y1 - th, cw, th },
+						{ x0, y1 - ch, th, ch },
+						{ x1 - cw, y1 - th, cw, th },
+						{ x1 - th, y1 - ch, th, ch },
+					}
+					for i, c in ipairs(e.corners) do
+						c.Visible = corners
+						if corners then
+							local q = rects[i]
+							c.Position = UDim2.fromOffset(q[1], q[2])
+							c.Size = UDim2.fromOffset(q[3], q[4])
+							c.BackgroundColor3 = col
+							c.BackgroundTransparency = fade
+						end
+					end
+					local full = esp.box and esp.boxStyle == "Full"
+					e.full.Visible = full
+					e.fullShadow.Visible = full
+					if full then
+						e.full.Position = UDim2.fromOffset(x0, y0)
+						e.full.Size = UDim2.fromOffset(e.w, e.h)
+						e.fullShadow.Position = e.full.Position
+						e.fullShadow.Size = e.full.Size
+						e.fullStroke.Color = col
+						e.fullStroke.Thickness = th
+						e.fullStroke.Transparency = fade
+					end
+					e.name.Visible = esp.name
+					if esp.name then
+						e.name.Text = plr.DisplayName
+						e.name.TextSize = esp.text
+						e.name.Position = UDim2.fromOffset(e.x, y0 - 3)
+						e.name.TextColor3 = col
+						e.name.TextTransparency = fade
+						e.name.TextStrokeTransparency = 0.45 + 0.55 * fade
+					end
+					e.info.Visible = esp.distance
+					if esp.distance then
+						local m = math.floor(e.d + 0.5) .. "m"
+						e.info.Text = e.role and string.upper(e.role) .. "  ·  " .. m or m
+						e.info.TextSize = esp.text - 1
+						e.info.Position = UDim2.fromOffset(e.x, y1 + 3)
+						e.info.TextColor3 = e.role and col or dimColor:Lerp(accentColor, 0.5)
+						e.info.TextTransparency = fade
+						e.info.TextStrokeTransparency = 0.45 + 0.55 * fade
+					end
+					e.hpBg.Visible = esp.health
+					if esp.health then
+						e.hpBg.Position = UDim2.fromOffset(x0 - 6, y0 - 1)
+						e.hpBg.Size = UDim2.fromOffset(4, e.h + 2)
+						e.hpBg.BackgroundTransparency = 0.35 + 0.65 * fade
+						e.hpFill.Size = UDim2.new(0, 2, math.clamp(e.hp, 0, 1), -2)
+						e.hpFill.BackgroundColor3 = hpColor(e.hp)
+						e.hpFill.BackgroundTransparency = fade
+					end
+					e.tracer.Visible = esp.tracers
+					if esp.tracers then
+						local py = esp.tracerFrom == "Center" and viewport.Y / 2 or viewport.Y - 2
+						placeLine(e.tracer, viewport.X / 2, py, e.x, y1, th)
+						e.tracer.BackgroundColor3 = col
+						e.tracer.BackgroundTransparency = 0.25 + 0.75 * fade
+					end
+					e.hl.Enabled = esp.chams
+					if esp.chams then
+						e.hl.Adornee = char
+						e.hl.FillColor = col
+						e.hl.OutlineColor = col
+						e.hl.FillTransparency = 1 - esp.fill / 100 * 0.85 * a
+						e.hl.OutlineTransparency = 1 - 0.9 * a
+					end
+				end
+			end)
+
+			local function setter(key)
+				return function(v)
+					esp[key] = v
+				end
+			end
+
+			local sec = addSection(visualsTab, "ESP", "ESP")
+			sec:Toggle("Enable", "see players through walls", function(on)
+				esp.on = on
+				espGui.Enabled = on
+				if not on then
+					hideAll()
+				end
+				notify("ESP: " .. (on and "On" or "Off"), on and "players highlighted" or "esp hidden")
+			end)
+			sec:Toggle("Roles", "murderer red, sheriff blue", function(v)
+				esp.roles = v
+				for _, e in pairs(entries) do
+					e.roleAt = nil
+				end
+			end).Set(esp.roles, true)
+			sec:Select("Color", "for everyone else", { "White", "Health", "Rainbow" }, esp.color, setter("color"))
+			sec:Slider("Max distance", 50, 3000, esp.dist, setter("dist"), function(v)
+				return v .. "m"
+			end)
+			local parts = addSection(visualsTab, "Elements", "ESP"):Collapsible(true)
+			parts:Toggle("Chams", "glowing body through walls", setter("chams")).Set(esp.chams, true)
+			parts:Toggle("Box", nil, setter("box")).Set(esp.box, true)
+			parts:Segmented("Box style", { "Corners", "Full" }, esp.boxStyle, setter("boxStyle"))
+			parts:Toggle("Name", nil, setter("name")).Set(esp.name, true)
+			parts:Toggle("Distance", nil, setter("distance")).Set(esp.distance, true)
+			parts:Toggle("Health bar", nil, setter("health")).Set(esp.health, true)
+			parts:Toggle("Tracers", "lines to players", setter("tracers"))
+			parts:Segmented("Tracers from", { "Bottom", "Center" }, esp.tracerFrom, setter("tracerFrom"))
+			local look = addSection(visualsTab, "Look", "ESP"):Collapsible(false)
+			look:Slider("Chams fill", 0, 100, esp.fill, setter("fill"), function(v)
+				return v .. "%"
+			end)
+			look:Slider("Text size", 9, 18, esp.text, setter("text"))
+			look:Slider("Thickness", 1, 3, esp.thick, setter("thick"), function(v)
+				return v .. "px"
+			end)
+
+			stopEsp = function()
+				esp.on = false
+				alive = false
+				espGui:Destroy()
+			end
+		end
+		do
+			local animPacks = {
+				{
+					"New (2024-2025)",
+					{
+						{ "Bold", 16738333868, 16738334710, 16738340646, 16738337225, 16738336650, 16738333171, 16738332169, 16738339158, 16738339817 },
+						{ "Realistic", 17172918855, 17173014241, 11600249883, 11600211410, 11600210487, 11600206437, 11600205519, 11600212676, 11600213505 },
+						{ "No Boundaries", 18747067405, 18747063918, 18747074203, 18747070484, 18747069148, 18747062535, 18747060903, 18747073181, 18747071682 },
+						{ "NFL", 92080889861410, 74451233229259, 110358958299415, 117333533048078, 119846112151352, 129773241321032, 134630013742019, 132697394189921, 79090109939093 },
+						{ "Adidas Aura", 110211186840347, 114191137265065, 83842218823011, 118320322718866, 109996626521204, 95603166884636, 97824616490448, 134530128383903, 94922130551805 },
+						{ "Adidas Sports", 18537376492, 18537371272, 18537392113, 18537384940, 18537380791, 18537367238, 18537363391, 18537389531, 18537387180 },
+						{ "Adidas Community", 122257458498464, 102357151005774, 122150855457006, 82598234841035, 75290611992385, 98600215928904, 88763136693023, 133308483266208, 109346520324160 },
+						{ "Wicked Popular", 118832222982049, 76049494037641, 92072849924640, 72301599441680, 104325245285198, 121152442762481, 131326830509784, 99384245425157, 113199415118199 },
+						{ "Catwalk Glam", 133806214992291, 94970088341563, 109168724482748, 81024476153754, 116936326516985, 92294537340807, 119377220967554, 134591743181628, 98854111361360 },
+						{ "Wicked Dance", 92849173543269, 132238900951109, 73718308412641, 135515454877967, 78508480717326, 78147885297412, 129447497744818, 110657013921774, 129183123083281 },
+						{ "Unboxed", 98281136301627, 138183121662404, 90478085024465, 134824450619865, 121454505477205, 94788218468396, 121145883950231, 105962919001086, 129126268464847 },
+					},
+				},
+				{
+					"Classic",
+					{
+						{ "Stylish", 616136790, 616138447, 616146177, 616140816, 616139451, 616134815, 616133594, 616143378, 616144772 },
+						{ "Zombie", 616158929, 616160636, 616168032, 616163682, 616161997, 616157476, 616156119, 616165109, 616166655 },
+						{ "Robot", 616088211, 616089559, 616095330, 616091570, 616090535, 616087089, 616086039, 616092998, 616094091 },
+						{ "Toy", 782841498, 782845736, 782843345, 782842708, 782847020, 782846423, 782843869, 782844582, 782845186 },
+						{ "Cartoony", 742637544, 742638445, 742640026, 742638842, 742637942, 742637151, 742636889, 742639220, 742639812 },
+						{ "Superhero", 616111295, 616113536, 616122287, 616117076, 616115533, 616108001, 616104706, 616119360, 616120861 },
+						{ "Mage", 707742142, 707855907, 707897309, 707861613, 707853694, 707829716, 707826056, 707876443, 707894699 },
+						{ "Levitation", 616006778, 616008087, 616013216, 616010382, 616008936, 616005863, 616003713, 616011509, 616012453 },
+						{ "Vampire", 1083445855, 1083450166, 1083473930, 1083462077, 1083455352, 1083443587, 1083439238, 1083464683, 1083467779 },
+						{ "Elder", 845397899, 845400520, 845403856, 845386501, 845398858, 845396048, 845392038, 845401742, 845403127 },
+						{ "Werewolf", 1083195517, 1083214717, 1083178339, 1083216690, 1083218792, 1083189019, 1083182000, 1083222527, 1083225406 },
+						{ "Knight", 657595757, 657568135, 657552124, 657564596, 658409194, 657600338, 658360781, 657560551, 657557095 },
+						{ "Astronaut", 891621366, 891633237, 891667138, 891636393, 891627522, 891617961, 891609353, 891639666, 891663592 },
+						{ "Bubbly", 910004836, 910009958, 910034870, 910025107, 910016857, 910001910, 909997997, 910028158, 910030921 },
+						{ "Pirate", 750781874, 750782770, 750785693, 750783738, 750782230, 750780242, 750779899, 750784579, 750785176 },
+						{ "Rthro", 2510196951, 2510197257, 2510202577, 2510198475, 2510197830, 2510195892, 2510192778, 2510199791, 2510201162 },
+						{ "Ninja", 656117400, 656118341, 656121766, 656118852, 656117878, 656115606, 656114359, 656119721, 656121397 },
+						{ "Oldschool", 5319828216, 5319831086, 5319847204, 5319844329, 5319841935, 5319839762, 5319816685, 5319850266, 5319852613 },
+						{ "Princess", 941003647, 941013098, 941028902, 941015281, 941008832, 941000007, 940996062, 941018893, 941025398 },
+						{ "Confident", 1069977950, 1069987858, 1070017263, 1070001516, 1069984524, 1069973677, 1069946257, 1070009914, 1070012133 },
+						{ "Popstar", 1212900985, 1150842221, 1212980338, 1212980348, 1212954642, 1212900995, 1213044953, 1212852603, 1070012133 },
+						{ "Patrol", 1149612882, 1150842221, 1151231493, 1150967949, 1150944216, 1148863382, 1148811837, 1151204998, 1151221899 },
+						{ "Sneaky", 1132473842, 1132477671, 1132510133, 1132494274, 1132489853, 1132469004, 1132461372, 1132500520, 1132506407 },
+						{ "Cowboy", 1014390418, 1014398616, 1014421541, 1014401683, 1014394726, 1014384571, 1014380606, 1014406523, 1014411816 },
+						{ "Stylized Female", 4708191566, 4708192150, 4708193840, 4708192705, 4708188025, 4708186162, 4708184253, 4708189360, 4708190607 },
+						{ "Default R15", 4211217646, 4211218409, 4211223236, 4211220381, 4211219390, 4211216152, 4211214992, 4211221314, 4374694239 },
+						{ "Mocap", 913367814, 913373430, 913402848, 913376220, 913370268, 913365531, 913362637, 913384386, 913389285 },
+					},
+				},
+				{
+					"Special",
+					{
+						{ "Ghost", 616006778, 616008087, 616013216, 616013216, 616008936, 616005863, 0, 616011509, 616012453 },
+						{ "Mech", 4417977954, 4417978624, 2510202577, 4417979645, 2510197830, 2510195892, 2510192778, 2510199791, 2510201162 },
+						{ "Udzal", 3303162274, 3303162549, 3303162967, 3236836670, 2510197830, 2510195892, 2510192778, 2510199791, 2510201162 },
+						{ "Oinan Thickhoof", 657595757, 657568135, 2510202577, 3236836670, 2510197830, 2510195892, 2510192778, 2510199791, 2510201162 },
+						{ "Borock", 3293641938, 3293642554, 2510202577, 3236836670, 2510197830, 2510195892, 2510192778, 2510199791, 2510201162 },
+					},
+				},
+			}
+			local bundles = {
+				{ 356, "Rthro Animation Package", 2510235063, 2510242378, 2510238627, 2510236649, 2510233257, 2510230574, 2510240941 },
+				{ 667, "Oldschool Animation Pack", 5319922112, 5319909330, 5319900634, 5319917561, 5319914476, 5319931619, 5319927054 },
+				{ 83, "Stylish Animation Pack", 619511648, 619512767, 619512153, 619511974, 619511417, 619509955, 619512450 },
+				{ 82, "Robot Animation Pack", 619521748, 619522849, 619522386, 619522088, 619521521, 619521311, 619522642 },
+				{ 43, "Toy Animation Pack", 973771666, 973767371, 973766674, 973770652, 973768058, 973773170, 973772659 },
+				{ 2623795, "adidas Community Animation Pack", 126354114956642, 106810508343012, 124765145869332, 115715495289805, 93993406355955, 123695349157584, 106537993816942 },
+				{ 80, "Zombie Animation Pack", 619535834, 619537468, 619536621, 619536283, 619535616, 619535091, 619537096 },
+				{ 63, "Mage Animation Package", 754637456, 754636298, 754635032, 754637084, 754636589, 754639239, 754638471 },
+				{ 56, "Cartoony Animation Package", 837011741, 837010234, 837009922, 837011171, 837010685, 837013990, 837012509 },
+				{ 39, "Bubbly Animation Package", 1018553897, 1018549681, 1018548665, 1018553240, 1018552770, 1018554668, 1018554245 },
+				{ 75, "Ninja Animation Package", 658832408, 658831143, 658830056, 658832070, 658831500, 658833139, 658832807 },
+				{ 1189398, "Wicked Popular Animation Pack", 101839542383818, 133304526526319, 136276875045281, 130373407996664, 83937116921114, 135810009801094, 128475661806875 },
+				{ 427999, "adidas Sports Animation Pack", 18538150608, 18538146480, 18538133604, 18538153691, 18538164337, 18538170170, 18538158932 },
+				{ 81, "Superhero Animation Pack", 619528125, 619529601, 619528716, 619528412, 619527817, 619527470, 619529095 },
+				{ 48, "Elder Animation Package", 892268340, 892267099, 892265784, 892267917, 892267521, 892269341, 892268710 },
+				{ 4294795, "adidas aura animation pack", 73137983344853, 75183215343859, 123973978164540, 129527230938281, 99457463463495, 140398319728398, 119007025452432 },
+				{ 33, "Vampire Animation Pack", 1113742618, 1113741192, 1113740510, 1113742359, 1113742092, 1113743239, 1113742944 },
+				{ 79, "Levitation Animation Pack", 619542203, 619544080, 619543231, 619542888, 619541867, 619541458, 619543721 },
+				{ 32, "Werewolf Animation Pack", 1113752682, 1113751657, 1113750642, 1113752285, 1113751889, 1113754738, 1113752975 },
+				{ 34, "Astronaut Animation Pack", 1090133099, 1090131576, 1090130630, 1090132507, 1090132063, 1090134016, 1090133583 },
+				{ 455003, "No Boundaries Animation Pack by Walmart", 18755930927, 18755942776, 18755933883, 18755925411, 18755922352, 18755919175, 18755938274 },
+				{ 4164795, "Amazon Unboxed Animation Pack", 82219139681769, 128339543796138, 114998633936467, 110418911914024, 125108870423182, 117011755848398, 137392271797713 },
+				{ 68, "Knight Animation Package", 734327140, 734326330, 734325948, 734326930, 734326679, 734329002, 734327363 },
+				{ 55, "Pirate Animation Package", 837024662, 837023892, 837023444, 837024350, 837024147, 837025325, 837025054 },
+				{ 122746952391276, "Cute Kawaii", 87378581612013, 134893286312907, 114496981964667, 78753669029804, 78668034869322, 114544880037945, 77472834006636 },
+				{ 151819968930057, "Victoria Model", 103718214826066, 116254697237169, 123079125703048, 91133124065771, 74672131231886, 72034200995655, 121980654863805 },
+				{ 115540548213210, "Jolly Animation Pack", 121468276202179, 83096586914276, 71971990553119, 86777047181866, 83063007119941, 73563861115457, 71637541197973 },
+				{ 5134295, "Billie Eilish Animation Pack", 82009039247070, 74056522836252, 107895705891639, 114806832298003, 132771121298158, 95937554524959, 78340083978503 },
+				{ 4899847411546, "Endless Aura Floating Pack", 75638427965557, 131290152729043, 77610456891399, 74451563346167, 74203422263286, 116293937663140, 110044773049875 },
+				{ 4974195, "KATSEYE Animation Pack", 125286451593779, 105967194765350, 140179859838109, 121868657321572, 84737112249504, 130399277423748, 87465102258861 },
+				{ 4128695, "Wicked \"Dancing Through Life\" Animation Pack", 82682578794949, 94133616443608, 79789194522561, 111157411630082, 124742764102674, 123509187015792, 135050138303161 },
+				{ 44134738352110, "Bicyclist / Bike", 110301614683999, 78201729008814, 82563400820481, 107759406184171, 116348378285841, 106713991255001, 77327275394482 },
+				{ 13847677942977, "Annoying Mini Me Animation Pack", 118862283492023, 123499402060535, 108064018869475, 77719056586289, 81914368217933, 122736580472463, 133063333973854 },
+				{ 246417977128963, "Doll 3.0", 109401010312897, 73488864835464, 90126309265051, 118036998124357, 99977942446739, 86104031977265, 133772806040245 },
+				{ 81397985471047, "Cute Bouncy", 112758171987743, 105398643971664, 81980688988481, 95845383984913, 91206221270256, 77455242814172, 137674505873151 },
+				{ 110693219046747, "Cute", 73073438542366, 87016985886252, 103569388072604, 126765807132662, 74500938515101, 130431162972600, 112736233576006 },
+				{ 57393899235237, "👼 Angel (Floating)", 138791542100078, 98178584535094, 120880326870608, 140709061221147, 98791635084597, 132683235998205, 133193009842625 },
+				{ 226926215014942, "It-Girl Essential Model Anim Bundle", 120992094851618, 90277175857099, 111476936032056, 112646876784472, 125665759397426, 129595215811160, 114352975745413 },
+				{ 202303684183778, "Zombie Animation V1", 99683684875874, 93573919758577, 118223426835901, 117775165215292, 126356736613041, 73917242953119, 75615514809696 },
+				{ 83150063434113, "Cute Sit", 110542674051174, 118167050072619, 113254670339077, 124327113511763, 99664258493491, 125102831404256, 112149520105094 },
+				{ 202937663223114, "Cute Joy", 106422977106635, 84929464233480, 136095340410517, 91003269917350, 99857206072384, 92360639959809, 83689554087147 },
+				{ 171430088634553, "Modern R6 Animation Pack", 104406060298008, 124988819613327, 99901926147031, 116343198036897, 129580654694779, 110907985002120, 99928806802401 },
+				{ 130315691170614, "Zombie Animation Pack", 72020579345676, 112308035206770, 131605772282759, 123878221388719, 138858643345164, 130045357922950, 93287488161066 },
+				{ 117734412711622, "R6 Survivor Animation Pack", 79575948465396, 127283838990258, 132471521372294, 137934973717401, 107615688046955, 111862482779638, 138445851536606 },
+				{ 94415078985878, "Kawaii Cute Girly Animation Pack", 111249376072333, 73636981266788, 131576761090801, 125116610868743, 106910927390939, 133959656651864, 104067918460960 },
+				{ 226897222628299, "Chill Boy", 79638430446468, 125935884379030, 140668178711040, 121044668035612, 90121153486837, 107026478538282, 74464049474878 },
+				{ 13290832259834, "Cute Animation Pack", 102526860241644, 129081631925429, 106225307541637, 118216190885024, 120436889637318, 83450718624718, 102260064079692 },
+				{ 52466328299272, "cutesy chibi animation pack", 103179664605636, 103849563001453, 136485344017634, 85211239912050, 110743159760232, 140486275218961, 121372042956337 },
+				{ 89768357010362, "Nonchalant Animation Pack", 107123120166007, 125611743000994, 88865794201668, 107221788639672, 118450647827858, 119095716889455, 96444605185114 },
+				{ 221310517641058, "Mini Me Animation Animation Pack", 106089150684940, 116237551178158, 104913000423601, 133780000255900, 79041695698101, 104828442123637, 83799110138560 },
+				{ 102048798144595, "Cool Emo Aura", 127580418054168, 91102198537347, 77210591876650, 123882301747791, 95117093930538, 131813760681065, 95685828345272 },
+				{ 23288783307950, "Dizzy Animation Pack", 137255148783720, 81054479341998, 105873418863090, 121811306911133, 78281355074909, 117513930450845, 97259493650901 },
+				{ 279612870347264, "Kawaii Animation Pack", 84721389105549, 79177448240579, 71632541042172, 105876388602982, 137590039087467, 76215614145945, 92467188495424 },
+				{ 107449487713343, "R6 Angel Wings", 79466032234245, 138299319826930, 122722513478504, 123793358507075, 75098379256118, 96350191100381, 100038070580099 },
+				{ 85110921996528, "It-Girl Diva Model Anim Bundle", 80494300854973, 82957409029972, 128240121430408, 125072972081311, 74013738186250, 81815597656897, 82440401004480 },
+				{ 6968492533072, "Competent", 119086399545479, 123321628856372, 121093676807537, 97770192168063, 93095471463296, 97137023603110, 76929827202134 },
+				{ 111318635278464, "Spider Hero", 98498958085614, 89415990707521, 94788684136734, 122116140777779, 74735559532482, 81017611230610, 91804560705435 },
+				{ 107350693632269, "🦋 Fairy Animation Pack", 89083151597904, 70694340291974, 121135476621722, 124909042161301, 87787512377012, 140475232307421, 117829242170557 },
+				{ 211258251729003, "Tsundere Animation Pack", 114875140433256, 108526601061721, 76151663022671, 83923174202568, 94236133353214, 73379865259884, 81953883148936 },
+				{ 155758204354290, "Realistic Male 01", 114822686413694, 139525865069063, 130062168996362, 90526784917601, 88683402647046, 94323572155517, 83944244201171 },
+				{ 25615747990214, "Endless Aura Animation Pack", 72370291265693, 100590428856100, 123264174003256, 79652918388064, 93289495565458, 80570157540129, 88619827935968 },
+				{ 245160420458794, "[R6] Sonic Speedster Anim Pack", 128200188464094, 96353899184850, 83851522234030, 81618354444197, 90715718113183, 98500626075688, 128862881664678 },
+				{ 145077181619782, "Furry Animation Pack", 122017321744523, 124732270095091, 78822241982559, 106970102410990, 75892211224822, 101997929337327, 105993144805512 },
+				{ 169806000893599, "Cute Shy Animation Pack", 110335965613791, 88354674253567, 108892505937356, 112598844654591, 116336440124933, 108646387674307, 105086806405008 },
+				{ 230396238988595, "🌜 Dreamy Aura Animation Pack", 103821987445449, 140236552335090, 86404050564430, 122416620253122, 111655584291361, 117378264371555, 87494549118785 },
+				{ 276498990431337, "Joyful Animation Pack", 115993266440776, 139313407695532, 79320869574382, 131930671650999, 131117498790057, 96747830207189, 126095360657826 },
+				{ 140802726445209, "Girl Boss", 93912644503832, 139844094650898, 117605897887039, 140026102623246, 86187846912270, 94548540472517, 122971733814893 },
+				{ 86270790880748, "🖥️ Glitch Animation Pack", 107245650589762, 128190163643941, 121934531969232, 115414916728373, 108245427497486, 95898854434873, 90839362430731 },
+				{ 113723687671765, "Viltrumite", 75641026799451, 106987123511072, 82398394563415, 134140909114564, 93363225480628, 125663362682162, 83574442579349 },
+				{ 164355299748180, "💅 Diva Animation Pack", 88482554139722, 94256804666698, 79334438988956, 97808091973123, 124469782365525, 109755265573758, 87225003917447 },
+				{ 94426143364477, "Haunted Ghost Soul", 103573927681025, 122735933423158, 100802507391931, 138692334288616, 130467240352433, 87318358377157, 81668714343553 },
+				{ 3209000400683, "😇🪽 Angel Animation Pack", 85043173762737, 89201769650144, 138287417917411, 106183812356921, 104600877757491, 104660563121727, 118177131718784 },
+				{ 79431454004759, "Bossy Confidence", 80237907572702, 103950002102007, 97688227121610, 88971196153642, 71037370337331, 137816596837314, 129547215527832 },
+				{ 238848825749740, "Ghoul Animation Pack", 76989014478397, 116022874958585, 112734296077543, 71865240269363, 80620104261118, 133899475603776, 130029645154775 },
+				{ 15910512001792, "puppy-girl animation pack", 111749180513057, 90443424631782, 78024865892029, 97624693542486, 119524820750332, 73719994122245, 84374727885308 },
+				{ 77123023523467, "Sword Animation Pack (Right)", 114369154163347, 132189012366468, 87770000067910, 113357698901401, 108519921701378, 112902067866259, 117331900750388 },
+				{ 219073071095899, "Secret Agent Animation Pack", 92218190346839, 104724130283444, 86044573374946, 90413927505422, 102469518998022, 78168066364210, 120149490597139 },
+				{ 168323858482919, "Halloween Tall Monster", 115802980358279, 81348372408717, 93642290766073, 87768181719255, 97117757510612, 128478657986830, 86117063258438 },
+				{ 152581890258482, "Nonchalant", 87426496981743, 121007634567279, 127973374851693, 88365385749971, 127305386281368, 99405504747797, 72718815132793 },
+				{ 196159361726685, "Effortless Aura Animation Pack", 106390953994044, 111484087971615, 112515971043909, 89547925261998, 135065867268215, 116904502538281, 133821165523889 },
+				{ 39278497764465, "Endless Levitating Aura", 71962531353983, 101401670392323, 98775178030183, 81745729002991, 121128633842201, 120507931847610, 76641694464522 },
+				{ 244246106823662, "Moonwalker Animation Pack", 92710716765283, 114763801999339, 101531926378460, 104533631513747, 70566441403811, 79306475091221, 98563274763262 },
+				{ 141645144245825, "Gyaru Animation Pack", 93285939059101, 134475730682161, 76990605488118, 77117607881594, 87497678199524, 102628481691065, 81891537510998 },
+				{ 3290671274997, "Dumb Dumb animation pack", 105004614594851, 82802187852670, 94065959215233, 95678097589635, 139471194330271, 74141666174470, 128952343229653 },
+				{ 103600337266099, "Killua", 113784126268587, 83436079239604, 93027547767719, 139330690411409, 109287098151511, 102087233204814, 84703542966981 },
+				{ 210501410435903, "Unrivaled Swordsman", 101628587972724, 94592212795048, 112472072663118, 134760817926751, 111518283525040, 140192747449146, 73916168921479 },
+				{ 262821442676286, "Cute Animation Pack", 138939410330874, 99840464746127, 73656936285475, 121638805023018, 103433308815918, 71446019452035, 106328912863928 },
+				{ 63728567056735, "Cute Shy Pack", 98637605375705, 127754112524189, 126145942574326, 105662064099352, 121626615485133, 75396216925695, 113753688495484 },
+				{ 251391123581565, "ANIMATRONIC BUNDLE", 101544755943444, 134168450460030, 90846537286775, 93439028227818, 103651923804354, 91870702348480, 90773108715760 },
+				{ 120481257024256, "Cool Boy", 130315830989545, 137785643057516, 85494649926570, 133898250810070, 121898694120755, 109255428875312, 97318831452205 },
+				{ 18028500709412, "Snake", 126436582760335, 108545392217814, 135108986609280, 72385458051568, 103279744626670, 103281762091297, 123956653220362 },
+				{ 141664514953254, "Silent Nurse", 83503720560704, 124045989288571, 135611588077870, 86489085940301, 134825190604786, 80613329641752, 135801055305466 },
+				{ 168696849243692, "Spiderman Web Slinger Animation Pack", 123498494711538, 109264538322789, 71399059326335, 134626738614630, 78726403425717, 97796906157079, 72914380938732 },
+				{ 73967670574306, "🎖️ Military Animation Pack", 114264441201765, 122783976375321, 117276571225301, 92738460397646, 121807925179208, 78517162186590, 104015116392523 },
+				{ 117879278582279, "Runway Diva", 132433153091310, 138178933183814, 84022133617342, 104950449133842, 105680381958805, 113498101915070, 123982847022337 },
+				{ 43338041964133, "Retro Animation Pack", 91334610292493, 113866237794361, 82449559205951, 81975998427267, 131265023902034, 71746696709344, 71819090103948 },
+				{ 129474238740939, "Little Friend Animation", 124201191757508, 100578384342496, 80482404506684, 137019482160610, 113331933689305, 76480109863921, 106028120008614 },
+				{ 54114110658153, "🤸 Handstand Animation Pack", 119718678619654, 120779828540112, 74743923335305, 106738358000265, 140035581518979, 105106152978552, 93107206685726 },
+				{ 163017378149235, "Cool Boy Floating Aura", 99104946083968, 138593385056356, 138761087398466, 83805029805026, 130748737873692, 92874125671939, 106250550031017 },
+				{ 280320546845566, "Sans Animation Pack", 116495170219410, 133278416896063, 92706100850185, 111618306974792, 89136705428977, 70913664505920, 75168138059254 },
+				{ 63244228017921, "R6 Animation Pack", 107510976901968, 81418689285592, 136312347048580, 78528539300829, 75362328318455, 92902598283305, 74692454929935 },
+				{ 190021249320677, "Headless Aura", 134955376393871, 71703551981504, 99509554618141, 135798298648231, 72562819406445, 128311988778489, 84517244080655 },
+				{ 132004524113589, "🛹Skater Animation Pack", 94910599998393, 136750898054727, 73280209872250, 72883750852520, 80566602616169, 109510347698976, 109468717300474 },
+				{ 148589613222341, "Animal Animation Pack", 99955302753648, 80777353730960, 98285202393652, 104778622992335, 101869145556635, 125737530068698, 137600244154602 },
+				{ 154816754181611, "No Animations Pack", 125181193511446, 98277462212808, 114909951212740, 84385111200080, 123565201644193, 128704251886648, 104642998429173 },
+				{ 132761028326938, "Casual Animation Pack", 136607681838394, 88766053158819, 78209309053197, 70380397793550, 123732290752173, 88787300450271, 78871479374096 },
+				{ 219075592036639, "Shy Doll ʚɞ", 120409233127901, 136018973495139, 140452828857398, 96648456154700, 96027555904188, 79085398750382, 108176320752952 },
+				{ 165127141291580, "Kawaii Bouncy Animation Pack", 70555112060391, 120312452429453, 107040972522394, 85980076701165, 110732584497974, 119148235349086, 136546912982911 },
+				{ 42247150176607, "R6 Reimagined", 113781694262261, 102878343237330, 124242847545277, 85143176135829, 82543840872740, 81130977190069, 86967055554090 },
+				{ 101626628473103, "Survivor Animation Pack", 117955497432173, 84228988694177, 74391569199700, 77213702560699, 117303527707873, 90727684391435, 125001214042734 },
+				{ 48085018323528, "Bouncy Cute Kawaii", 134371248846631, 91422662153285, 90921053952424, 134976602822718, 125232738686501, 101450438167306, 138313860455106 },
+				{ 211603209255940, "😌 Nonchalant Animation Pack", 120361344309821, 137080061938111, 138817543112482, 101362426464232, 137504551310868, 112352256883383, 121597417409288 },
+				{ 51189308475249, "Steven Animation Pack", 133253708125525, 84157863686470, 73636886914394, 76594222545001, 96851516499601, 72765107060955, 124364040445553 },
+				{ 5626295, "FIFA Football Animation Pack", 118649383584034, 116562432475955, 85988010084587, 109764146230261, 114350110947576, 93756360672538, 96253251952462 },
+				{ 174234884993258, "♡ kawaii anime girl pack", 118402733965469, 137873085101178, 130849350236070, 94640150317449, 125678285855898, 72639448259486, 78062527010701 },
+				{ 130256743410606, "Aura Float Animation Pack", 77944556069734, 118783698771757, 92373181998670, 128455215897480, 129911095680365, 115980070775346, 83505514580679 },
+				{ 112431871100891, "💅 Sassy Animation Pack ✨", 129626196680285, 96410564425021, 75896195178885, 114840474009020, 80824008450652, 136213738352357, 124254242876616 },
+				{ 31650195771989, "Cute Impatient Tsundere", 79632663995121, 100069639645127, 124751284064591, 140066430486591, 95491270698008, 88059525289085, 88912476295478 },
+				{ 236876291974067, "Detective / Mafia Animation Pack", 139109279036888, 130318375466007, 100035784099110, 130915975817889, 130448881461319, 129001808884122, 137198611187499 },
+				{ 67246619830311, "Spider Animation Pack", 112466965724680, 108424853644232, 75841551285120, 100706347195538, 75241830583351, 86343110170387, 124788696828521 },
+				{ 153762937122364, "Kawaii Animation Pack V1", 139284113672221, 122146776836501, 114307772322044, 121481289336077, 119438473051601, 98018800506974, 90908339375985 },
+				{ 133029085353625, "Diva Effortless Aura Float Pack", 136462080938426, 85942415677641, 104659090959141, 80104657332873, 133638268834647, 113339705060994, 77349285629064 },
+				{ 103419279227461, "Princess", 112247064065622, 126906500970658, 102952751730257, 104343764860688, 95402289660381, 135831725136212, 108376021237535 },
+				{ 36026146779603, "Social Anxiety", 121663093701363, 120883274762528, 109934846900463, 94778609167745, 92704985508053, 82905220322821, 121066908207013 },
+				{ 155148535503082, "angelic dainty floating animation pack", 122087124095413, 133979848959140, 138857433670797, 130915558062129, 103456136433561, 110517842631547, 81357557460188 },
+				{ 142368140565439, "Hatsune Miku VOCALOID", 77394702918889, 115076409379509, 132703832811724, 104800719202256, 79679642704558, 124311346839421, 123121833221754 },
+				{ 331465, "Bold Animation Pack", 16744209868, 16744219182, 16744214662, 16744212581, 16744207822, 16744204409, 16744217055 },
+				{ 1036896, "Default Animation Retargeting", 97469447878281, 138584736068420, 104556634816668, 102957313714134, 112811597738377, 92204703529731, 89611570900463 },
+				{ 932296, "NFL Animation Pack", 101094325978637, 120071305586627, 84823630062362, 140600227095432, 123307994439772, 122757794615785, 136750772888868 },
+				{ 1036897, "Pirate Animation Retargeting", 93961142580011, 131469949729016, 129218825505545, 102669705555030, 118846833823973, 106906206764899, 92456594622012 },
+			}
+			local newBundles = {
+				{ 346718828628, "R6 Softie Animation Pack", 102651918060342, 92161818406039, 118095235880083, 118115709618417, 92081032014414, 118521737972592, 123622969112890 },
+				{ 240013541704767, "Burtonesque Animation Pack", 121987160492958, 133859183088488, 123267566647443, 113353475841465, 136850071141658, 73109666815168, 132617060260018 },
+				{ 81295854326892, "✨ Aura (Floating)", 119126902591378, 78093568415363, 127441950006817, 125716954489552, 130109078714595, 125145865285401, 72625909388144 },
+				{ 64359359118780, "Matching Gojo & Geto - Geto", 74700203716777, 139575967445620, 108430565380083, 70865735021615, 89516682191923, 125706692592941, 101366581640976 },
+				{ 210813929860435, "[MGSV] Venom Snake Animation Pack", 92845210569291, 110268416056059, 119407040328053, 71368900313773, 91470925932898, 118861344282603, 74485633139255 },
+				{ 22999254604507, "Clean Girl", 99617445188896, 98432516102509, 75417410614580, 111467153412202, 101496693975399, 71306092771466, 97617322069183 },
+				{ 81889112216202, "Fairy Animation Pack", 126500995514436, 111347977822579, 87861850888726, 72177014322054, 83015219645885, 128525453879414, 123969942041709 },
+				{ 215163851706936, "Tall Scary Creature", 99930491676650, 114946964023598, 112706676171803, 132823341775268, 100611329530991, 82075092072041, 140647468200484 },
+				{ 195619017160446, "💨 Ninja Animation Pack", 107377621660534, 132035242186767, 71990522773224, 118835903505201, 97302677062076, 122413280106175, 109349550251797 },
+				{ 69255288290150, "Silver Surfer Animation Pack", 102553531089218, 128481002419055, 73410262711109, 136907314514233, 133023549971499, 114638785955574, 81100272666954 },
+				{ 29854653487192, "Best Jotaro Kujo Animation Pack [JOJO]", 122303709528974, 128700191590653, 80885848966338, 131831849983542, 136236486473376, 118039419450962, 95414956629341 },
+				{ 100406542283134, "🔥 Menacing Floating Viltrumite Pack (Invincible)", 127794126361401, 140377650140124, 94357470013234, 133844541164572, 96782647421445, 120376221505068, 125432791579005 },
+				{ 178030229597008, "Fake Lag Animation Pack", 131268753169058, 100534648341456, 128135398672253, 117761196710546, 72426380380145, 136633822449776, 116038868377383 },
+				{ 168780946552846, "Dog Animation Pack", 86568145958023, 82759748724300, 90568510415059, 103791706490551, 82477993292508, 139728378883263, 75585586350309 },
+				{ 90233089251471, "Halloween Cute Sleepy Zombie", 110042753242042, 121957019198248, 91802592336625, 130302717838156, 133552486102001, 120615385853156, 92975795432744 },
+				{ 130512117821725, "Cute Shy Doll Twirl Animation Pack", 126232044071474, 110114682207503, 139881581082270, 118205975863094, 102359751134377, 103564718944086, 122682073438591 },
+				{ 103654832647918, "Almond Eye - Uma Musume", 123563916862517, 128069645009648, 74477024273867, 88963980305022, 136243234419016, 88871017266742, 128869981832315 },
+				{ 58114753443214, "Pirate Animation Pack", 105097357784138, 101907866742265, 71523544324648, 137650189926028, 120311358635815, 75782889213241, 86531929072722 },
+				{ 50557425118268, "R6 Creeper Animation Pack", 75523909326842, 77120301846359, 139352162278905, 95617922141272, 87252677843032, 83248820150680, 116164306507083 },
+				{ 76869663076404, "Hiding In A Trashcan With Accessory!", 122563566229229, 102709129046892, 127605149031726, 77362821791514, 96308087510226, 120616719984435, 100462230823521 },
+				{ 72788764355691, "cute anime girl sway kawaii pack", 119037038589162, 83858445465753, 121242824693191, 87446875569105, 76718103382741, 83829747186223, 101814079044625 },
+				{ 203884520960460, "Goofball Animation Pack", 71882784891671, 70634869984615, 105939529889727, 78011340545782, 105416600557424, 80428760844405, 75820848971233 },
+				{ 7458997449692, "🌙 Nonchalant Laid Back Aura Pack (Floating)", 100151586261686, 137425296181056, 110577583842277, 113235349732772, 111696172442428, 92757030112663, 88307134494773 },
+				{ 6535623688584, "✨ Cute Pose Laying Aura Pack (Floating)", 117197173691073, 71706288099375, 97216931005942, 83712976418916, 71969867726175, 132522733385827, 98935053237666 },
+				{ 77892115233294, "GTA CJ Animation Pack ⭐ORIGINAL⭐", 118623886392486, 95860024032857, 93323445795978, 97713278193617, 93770439278759, 75379729668530, 118916799762866 },
+				{ 252484030352496, "🌙🌸 Kawaii Sailor Moon Flying Aura Animation Pack", 136522740838112, 81542090561099, 97885968384749, 95712834264331, 123275625279184, 93450667546879, 123847253229797 },
+				{ 28201483276338, "Emo Aura Floating Animation Pack", 78645276679006, 77299242052377, 101636604008106, 86676316711548, 114787855055183, 110849943940175, 96406779847899 },
+				{ 103135883866153, "Classic Vampire Animation Pack", 127499925377464, 72670516117084, 136172783186593, 110718836088108, 100009506792121, 130847482819362, 87911754624645 },
+				{ 25704340036948, "Chill Guy Aura Farm Animation Pack", 85525896071224, 100625294782222, 121498618544582, 106575367964532, 122778307875305, 89618474667266, 130944785287900 },
+				{ 96298932601360, "Cute Aura Flying Animation Pack 💫🌠", 85025973989178, 121193171893051, 76246333533136, 122673407386115, 127146126385914, 127693718415398, 93706778297407 },
+				{ 192543446110579, "Crawling Animation Pack", 137806631269292, 91057479836882, 128895867740513, 131780669588937, 89162380786728, 78148016528629, 130058926615484 },
+				{ 214466134093264, "Cool Guy Aura Animation Pack", 85267879188594, 83255863654928, 114493563888145, 73988126833546, 118740348379850, 110479971524890, 118130030155282 },
+				{ 33141150609984, "Cheerful Cartoony Animation Bundle 😊", 101375057394281, 103397623981092, 124122866075020, 91193753828092, 110370932833569, 73610349065218, 114846464401954 },
+				{ 170780990658194, "Lazy Float Animation Pack", 93999503659421, 105561835903946, 97910588621921, 83480876088136, 107196905208347, 95678919217249, 106777676300109 },
+				{ 121974117115613, "The Nurse - Dead by Daylight", 73071046669341, 138823968011219, 113549159019291, 99010959763319, 102327644380473, 107897900282867, 104621075264639 },
+				{ 100631627459825, "Ghost Animation Pack", 135055120827684, 76189697399044, 115080665168960, 133991032899590, 78097327112928, 97551824780414, 117191731184382 },
+				{ 219242833772205, "Mini Tank Animation Pack", 96055421212453, 122057768211563, 85666217062452, 92501402738820, 87930704892851, 133227304522459, 90968985949634 },
+				{ 3740276104199, "Shy Cute [3.0]", 138297485420191, 89464681685474, 82350105174729, 130652682437363, 128173484101534, 112338515646914, 133557217215546 },
+				{ 96822070451129, "[MGS3 DELTA] N Snake Animation Pack", 116373240353239, 137212837402810, 124985168992629, 108946478789549, 96340226362936, 109624688326490, 125815766800638 },
+				{ 130712556441073, "[MGS3] N Snake Animation Pack", 90287538630017, 101101594771970, 130026853919102, 83384706262856, 105237567714590, 126529248768011, 124826489378334 },
+				{ 244495263660190, "Motor bike", 98953261541373, 86749265272940, 127216367675398, 94724585321015, 119146909757244, 109312692839021, 125458328923962 },
+				{ 2554700661078, "God Endless Aura", 140257972350930, 75803431179392, 124643432505022, 87901598630163, 119550784755766, 105949776856550, 110409614440547 },
+				{ 260460749130860, "Cute Baby Girl", 131228697811112, 108442900101114, 80641134642012, 85859964219434, 86652090148766, 105154513381753, 113175498589951 },
+				{ 29541990297544, "Cute Zombie Girl", 95875054425935, 82250217733202, 101261501159015, 81094043127936, 74503562351686, 129503832468030, 112045237330625 },
+				{ 139980616397340, "Cute Anime Accurate Girl Animation Pack", 123361993725314, 98900851613800, 134514296943852, 77105092795234, 126426621974829, 106501993251536, 103199218311663 },
+				{ 237142673233282, "Texas Cowboy", 137530343766636, 133034402843265, 112949286915127, 119966406173769, 136130690287220, 93710047260909, 108804864887472 },
+				{ 223992941593945, "Aura Headless Hover Animation Pack 🎃🦇", 119883817735679, 107877258428987, 95263315997959, 139442111541178, 113624742007635, 73222487330469, 101229651249319 },
+				{ 109854023066610, "Cat-boy Animation Pack", 85163331300454, 72342918281987, 93765468680106, 79926571638154, 133759466033378, 128774319815820, 81206256359713 },
+				{ 101809116064067, "Jolly Animation Pack", 86822978607368, 137660640858861, 77536436651913, 97437126647537, 110413287038667, 87882735676493, 88596944586212 },
+				{ 152306106818054, "Cat-Girl Animation Pack", 97317100261517, 116870418497306, 119510100333782, 122910742742130, 118747804995604, 92496064469025, 81309395375420 },
+				{ 269761199979151, "Yuji Jump Animation Pack V2", 90096455782289, 74405958592823, 135224407517123, 73912943159582, 132179141594611, 75527654293493, 120027590582238 },
+				{ 167942519332380, "Cute Frog 🐸", 107853639072984, 110447391478976, 94204782170994, 139391685278077, 110454726325518, 78952577481681, 107955532457303 },
+				{ 206275572257570, "67 Aura Animation Pack", 130271944198901, 118085427171298, 73723415834655, 100467691343122, 78316555374950, 78747622689419, 89061332430573 },
+				{ 274284729014181, "Injured Animation Pack", 104477657447895, 96419109016980, 78542544704586, 136958917667806, 98056993478207, 76271441572688, 134467497229442 },
+				{ 207559180464658, "Cute Playing Around", 89432596623410, 118070195741831, 131511660973957, 84633211136675, 70669548271771, 118444670723715, 101476083423992 },
+				{ 62852628400321, "Cute Needy Bouncing", 72067797659191, 124972111409414, 92079481922699, 92736583114162, 115301125593866, 96488436493859, 125098596917753 },
+				{ 194237466511735, "The Shape Michael Meyers - Dead by Daylight", 70860596388375, 90130092120122, 98148572059842, 126969703678648, 77839379096699, 131025886592960, 78589734666595 },
+				{ 260331541590062, "Cool Boy Pack", 80171866305021, 139930443270979, 94305659214661, 111286671182613, 117689288459932, 82679823117260, 122623311785376 },
+				{ 249705331606154, "Headless Horse Rider Halloween Animation Pack", 106989230981555, 140075290450368, 88613046132234, 105644717957223, 125992853799091, 103555796630005, 99792641790749 },
+				{ 219196833552012, "Floating Animation Pack", 113858313416489, 88471654472148, 132857529438108, 83578339581624, 71535051799354, 93321075431546, 87949112447276 },
+				{ 96218112462687, "Injured survivor animation pack", 91004093524361, 121424887124246, 90081077563840, 90522226340402, 88359527582669, 109698092826334, 139551965568218 },
+				{ 157068024753326, "Cute Kawaii Girl", 78294398529281, 132502249513547, 109496577835577, 123630463152824, 127822567000511, 130676104756900, 76274836988148 },
+				{ 78316657350968, "Cute Kawaii Doll", 95933625306405, 96186536617838, 129394133110246, 94830488207575, 137395179912796, 91497237628692, 79756759306847 },
+				{ 149879406785473, "R6 Shy Yandere Doll", 139749857583281, 138029921045597, 102476724311834, 89272416526830, 87921948176693, 137165561932341, 127088533535788 },
+				{ 148489958236762, "Heavy Golem Animation Pack", 135701630284804, 84428266027481, 121135597921003, 109986699026128, 90414753106749, 118065750275214, 80661069027206 },
+				{ 210039970254554, "Ballerina Animation Pack", 125515675842892, 132953626083118, 124895093738174, 128128077709320, 120945680003606, 85938558644551, 80258459486435 },
+				{ 219272004092971, "Swim Animation Pack", 82965462235821, 100542085819897, 122994413708703, 136041073174325, 99526810377092, 75690732146878, 125896604636794 },
+				{ 78201426027104, "Michael Jackson Pack", 139737257808318, 119261195846349, 103928836905414, 97498268058458, 70794549833186, 129875830849484, 104184039162344 },
+				{ 215390157024702, "Spinning Animation Pack", 88578995084665, 75526479927182, 88715943305890, 93766625689040, 134679252211114, 87460654630692, 71204360453355 },
+				{ 45181992921284, "MAGE ANIMATION", 95412524556432, 135715316604799, 86843251007732, 94267079287244, 114202488937962, 77815115545843, 83803952450950 },
+				{ 235864691929345, "sleepy cute kawaii animation pack", 99885596122948, 137750032328715, 136224663594149, 127451227519129, 107326540977737, 84170363870797, 98317063179329 },
+				{ 279287319590676, "Cool Boy Aura Floating Sit Animation Pack", 127452678420147, 135999443549171, 112986026358295, 118964234540904, 90136671427215, 118123216253768, 70589650329218 },
+				{ 59336316790104, "Cute Model Girl", 72763656715596, 103577782244832, 79717533616833, 92838424262999, 118885163492445, 74812525561245, 81640929232810 },
+				{ 191308001565914, "Cute Gyaru Joyous Girl", 116970330059411, 133645960318815, 128053582126246, 103447792656149, 91886663967396, 90659398203981, 101563830896712 },
+				{ 144390297632617, "Cute Joyous Doll", 100901492270582, 105293968086403, 125208376396180, 84330494327869, 84709100954434, 129177004292851, 123971090817524 },
+				{ 240545187485207, "Cute Joyous Swaying Girl 3.0", 102879169205038, 102113239789768, 110270849715256, 121922639458716, 70417725551265, 72625186253766, 115627618692151 },
+				{ 235748691244472, "Realistic Zombie Animation Pack", 97271539683055, 121977418368927, 118240305404123, 111580617219204, 102808826006248, 140656058165576, 95786068741018 },
+				{ 271750463772104, "Cute Baby", 73421603134927, 104701560759467, 139802219099705, 123234370489036, 118651607358840, 92478876494158, 136541591428167 },
+				{ 167555137794755, "Cute Sit Floating", 104336043212491, 108763749289460, 75398364567441, 83964382908600, 81002225217932, 140167547508427, 111234293122503 },
+				{ 238434413254101, "Cute Shy Doll", 81132802911146, 121942336973643, 71528806562821, 92645236363717, 129254372210059, 84246439515369, 120612365648651 },
+				{ 105197486240045, "Sneaky Animation Pack", 74577925898509, 94737333218733, 97913326476428, 82775460888591, 100054440300149, 123355070533168, 119231509302601 },
+				{ 107535279657732, "Confident Animation Pack", 80338861930712, 122564973169214, 133724458565522, 112164600756795, 80626819732131, 130442757525478, 77641535635641 },
+				{ 4645180709379, "Full Of Joy Animation Pack", 112697198445949, 120412109522349, 121696438773017, 80146665499399, 71067597691974, 74279421611048, 105330739520152 },
+				{ 8793479539641, "MM2 Fake Dead Animation Pack", 136230440471372, 138424891541704, 138958313587847, 140621572670253, 105500230417230, 112337412231852, 81567621205747 },
+				{ 106044231344969, "Cute Shy Girl Pack", 106705278836440, 101760042345605, 138053854205135, 78059067540085, 99363563273607, 119452852001390, 119004313922987 },
+				{ 54843787624853, "Superhero Animation Pack", 133885837245735, 100903067741657, 89150861190550, 90526719969682, 135808067855041, 100819872682736, 133510432675559 },
+				{ 238021101976189, "BoredAnimationPack", 81108258054128, 118225959186464, 106303901972505, 96584218892392, 133997591845887, 131852032155353, 77738785476558 },
+				{ 104270348457345, "The Earthbound Hero", 115586654010215, 99630725572520, 105937528135441, 127499818514448, 84042957473345, 127674878647760, 93967450827531 },
+				{ 194092575833989, "Matching Gojo & Geto - Gojo", 116143264571425, 113393685850920, 100348565164106, 122942170308359, 110411574657654, 88370911565785, 126439838561769 },
+				{ 80518893637907, "🤣 ZEN FLOAT MOTION PACK", 137462958179305, 78531395021175, 135436716455054, 82322037475595, 78124909364784, 116668243662787, 100963601832351 },
+				{ 264763278477816, "completely stiff", 110531944855263, 137403770390683, 97869145096827, 118667339556946, 113995959639869, 81593934396367, 106780688408107 },
+				{ 169012738981402, "Cute Chibi Sassy", 77314984584545, 82006175599281, 137302467139344, 101006398429994, 114824427236668, 117239002744710, 132658936694612 },
+				{ 261672699599456, "Halloween Cute Zombie Nurse", 109341777923994, 108334209793925, 118686861288812, 90345010338893, 120665590312864, 71676809013968, 106417050771200 },
+				{ 128523558594849, "Hood Walk Animation Pack", 122506696113672, 104741391551671, 128584977482633, 81740095053841, 126990651625080, 97132076459823, 103913105635251 },
+				{ 40188790057873, "Possessed Crawling Animation Pack", 116915241391805, 128750743583051, 125166469849476, 108253402973768, 78298842551143, 122303538944449, 135737244509911 },
+				{ 145338216183705, "Flying Aura Farmer Animation Bundle", 77791651089479, 129363373168599, 123081436536094, 96068867309714, 134008951696821, 125651485178519, 133878107477099 },
+				{ 8937001401294, "Vampire Animation Pack 🦇🧛🏻", 84752569530713, 80337281422433, 90507664248957, 111715484252761, 135515490952874, 71447775349973, 118575291063270 },
+				{ 259113896317680, "Emo Flying Aura Farming Animation Pack", 91230300801706, 127037824940169, 116668725669697, 71015392129909, 127080802411319, 101828605672931, 134726585265124 },
+				{ 58008550856515, "💀 MM2 Animation Pack 💀😹", 96385977083778, 72197041576015, 94964320083399, 101861348010348, 109522809200301, 100577223872149, 108766346107869 },
+				{ 218363945814573, "Moonwalker Film Pack", 114502908879897, 109402978501307, 77965013441865, 83819464193193, 119645343410403, 84734891638618, 95817832098000 },
+				{ 37942358904819, "Survivor Animation Pack", 135674002690538, 127484714354536, 82854940462817, 75244591963793, 77043813788444, 123518287072605, 139982966829837 },
+				{ 226333114683103, "Kawaii Bouncy Nerdy School Girl", 135942776905421, 84995896833734, 74139952254854, 73526026144499, 118035587107014, 75788386725132, 126762092773955 },
+				{ 15279952972706, "Kawaii Cute Whimsy Girl", 108149127341810, 128484963183463, 79118538240281, 93238127126247, 82280767407792, 113077878759887, 108679620828890 },
+				{ 196670956226483, "Cute Shy Pouty Girl", 119528600250052, 109185231917244, 112662974444844, 127781842059460, 133015054391336, 92908919868974, 97958948335858 },
+				{ 45823831309697, "Cute Sleepy Tired Tsundere", 85415795044178, 108933493223197, 79389984856904, 132060352425993, 135293602487463, 81929470367318, 130923042546110 },
+				{ 183415039546818, "Cute Stylish Girly Diva", 113865042653446, 106692867109053, 104749767253371, 99672303381341, 94154759028013, 107613417092267, 119119951845178 },
+				{ 129980707435676, "Bored Sassy Mean Girl", 136601483414758, 95607213703404, 79760282991190, 124394717662756, 94041168358558, 81900172692959, 124662363089270 },
+				{ 165106603811960, "[R6] Daydreamer Animation Pack", 111948164040561, 124344951085066, 75303574652811, 93312341190716, 76151318810184, 113834028623165, 135303950851589 },
+				{ 122125716415607, "Tall Slenderman Animations", 122806859329839, 99448802469406, 126104026007446, 122286127706042, 115783359270546, 91449271168772, 93488770319183 },
+				{ 254454190905327, "Faust - Limbus Company", 102377305607045, 73259516607307, 113349182721150, 139840357507302, 85307926752778, 139997270770450, 136836770486718 },
+				{ 231583091863184, "Rivaling Spider Hero v2", 136668077102077, 123024274599820, 118367736336496, 103208327885734, 107304583269426, 93325873731329, 110194681731643 },
+				{ 266825133703741, "V1 Clash Mode ULTRAKILL Animation Pack", 84967279390950, 103883079468882, 93337492116743, 118554613342071, 89075107205983, 86307584737703, 121602442665611 },
+				{ 64842196438423, "Psycho", 118086017761082, 131337854476238, 109585056712932, 125432016616771, 138142200761786, 89172105619917, 97897452540515 },
+				{ 237887942496224, "Cute Kawaii Cat Girl", 86892423945466, 119692089648088, 95411795354662, 77106544942843, 96707673993441, 116536110277892, 118383577362271 },
+				{ 281213457343854, "Cute Puppy Girl Animation Pack", 81200193729952, 140090954970456, 124282040126811, 102754820468722, 78237372835821, 115908996311928, 83850064158159 },
+				{ 146631584295776, "Ninja Animation Pack", 139025265615945, 120181245834586, 119341465624661, 115984803005019, 111085341389942, 120861164738915, 109470126430376 },
+				{ 149613246755627, "🐾 Therian Furry", 94925478547755, 111277037711705, 113440665495248, 117902437286612, 80010379317159, 81758690520669, 105439957980795 },
+				{ 5692212788525, "NPC Avatar Animation Bundle", 105434767037086, 114420021859694, 113750415532506, 88350251537308, 126339090911461, 87133513702806, 104737387655624 },
+				{ 164628585885005, "R6 Lego (Fake knee)", 127140437889594, 129170298227145, 125539089354894, 71683361004944, 88374714784532, 99106880992526, 100194596945796 },
+				{ 200493094373809, "Sitting R6 Animation", 99590209409204, 127441052413544, 103026531476968, 132911004994525, 122966638146164, 114159194482746, 112571093788907 },
+			}
+			local emotes = {
+				{ 3360689775, "Salute", false },
+				{ 3360692915, "Tilt", false },
+				{ 5915779043, "Applaud", false },
+				{ 3576968026, "Shrug", false },
+				{ 3360686498, "Stadium", false },
+				{ 3576686446, "Hello", false },
+				{ 3576823880, "Point2", false },
+				{ 3716636630, "Monkey", false },
+				{ 4646306583, "Curtsy", false },
+				{ 4849499887, "Happy", false },
+				{ 3823158750, "Godlike", false },
+				{ 14353423348, "Baby Queen - Bouncy Twirl", false },
+				{ 4689362868, "Sleep", false },
+				{ 3576717965, "Shy", false },
+				{ 14353421343, "Baby Queen - Face Frame", false },
+				{ 5917570207, "Floss Dance", false },
+				{ 5104377791, "Hero Landing", false },
+				{ 15610015346, "Yungblud Happier Jump", false },
+				{ 7466046574, "Quiet Waves", false },
+				{ 5230661597, "Bored", false },
+				{ 14353425085, "Baby Queen - Strut", false },
+				{ 5915776835, "High Wave", false },
+				{ 12507097350, "Alo Yoga Pose - Lotus Position", false },
+				{ 4940597758, "Cower", false },
+				{ 4272484885, "Baby Dance", false },
+				{ 101573394483995, "Effortless Aura Pose", false },
+				{ 76361248833307, "Godly Aura fly pose idle", false },
+				{ 3994127840, "Celebrate", false },
+				{ 132384701706046, "💀MM2 Fake Dead", false },
+				{ 10214418283, "V Pose - Tommy Hilfiger", false },
+				{ 104131847054135, "Jamal Brazil Groove", true },
+				{ 16553249658, "Mae Stephens - Piano Hands", false },
+				{ 10214406616, "Frosty Flair - Tommy Hilfiger", false },
+				{ 139021427684680, "KATSEYE - Touch", false },
+				{ 4849502101, "Sad", false },
+				{ 4102315500, "Haha", false },
+				{ 15698511500, "Cuco - Levitate", false },
+				{ 106708015414624, "Endless Aura Floating", false },
+				{ 3762654854, "Greatest", false },
+				{ 98603994713783, "Rat Dance", false },
+				{ 15554010118, "Olivia Rodrigo Head Bop", false },
+				{ 93511411593120, "/e fly", false },
+				{ 105381637724646, "🎃Pumpkin King👑", false },
+				{ 71302743123422, "Popular", false },
+				{ 88425531063616, "Stylish Floating", false },
+				{ 104142334418357, "[BEST] It's Gangnam Style!", false },
+				{ 4049646104, "Line Dance", false },
+				{ 120642514156293, "Secret Handshake Dance", false },
+				{ 111378664166805, "Moonwalk", true },
+				{ 80963950541052, "hip sway", false },
+				{ 7202898984, "Show Dem Wrists - KSI", false },
+				{ 5938394742, "Old Town Road Dance - Lil Nas X (LNX)", false },
+				{ 74716792202343, "🕷️ Hornet's Spider Dance 🕷️", false },
+				{ 4940592718, "Confused", false },
+				{ 15679955281, "Festive Dance", false },
+				{ 115203580644128, "⚡ Raiden Punching Armstrong Loop", false },
+				{ 79312439851071, "Chappell Roan HOT TO GO!", false },
+				{ 3762641826, "Side to Side", false },
+				{ 5230615437, "Beckon", false },
+				{ 130371895389423, "[BEST] Invisiblity", false },
+				{ 107282826166809, "Basketball Head", false },
+				{ 79017619155911, "Wall Phase (GLITCH)", true },
+				{ 125328720114284, "Nervy Dance", true },
+				{ 113702736944973, "Yuji Jumping Edit", true },
+				{ 4272351660, "Fast Hands", false },
+				{ 97164262994588, "Floating in Love 🥰", false },
+				{ 16572756230, "HIPMOTION - Amaarae", false },
+				{ 78224683906191, "Cute Feet Kicking", false },
+				{ 82727664018494, "Lush Life", false },
+				{ 5938365243, "Dolphin Dance", false },
+				{ 70919402339484, "Scuba Nick Wilde", true },
+				{ 95325218641213, "Psycho Teddy", true },
+				{ 15506503658, "Victory Dance", false },
+				{ 4940602656, "Jumping Wave", false },
+				{ 108635834286627, "Spiderman Hang", false },
+				{ 5915773992, "Break Dance", false },
+				{ 3934986896, "Dizzy", false },
+				{ 136648387080677, "DARE - Gorillaz", false },
+				{ 111426928948833, "Floating on clouds", false },
+				{ 127764273000599, "Dropkick", false },
+				{ 137234266130963, "MJ - P.Y.T. Pretty Young Thing", false },
+				{ 17746270218, "Sturdy Dance - Ice Spice", false },
+				{ 3716633898, "Twirl", false },
+				{ 129149402922241, "griddy", false },
+				{ 94064805002669, "Cute Kawaii Posing >-<", false },
+				{ 139058906415119, "Floating", false },
+				{ 94292601332790, ";invisible me", false },
+				{ 4212496830, "Zombie", false },
+				{ 75911227509248, "Ghost Floating", false },
+				{ 79127989560307, "Moon Walk", false },
+				{ 89157328525577, "silly jumping spider dance", false },
+				{ 5938396308, "HOLIDAY Dance - Lil Nas X (LNX)", false },
+				{ 120904242187887, "🤣 GOOFY FLAP FLY ANIME - FUNNY MEME", true },
+				{ 107708114415320, "Big Guy - 🔥 Ice Spice x Spongebob", false },
+				{ 132367660388476, "SHAKE", false },
+				{ 14353417553, "Baby Queen - Air Guitar & Knee Slide", false },
+				{ 138515241510970, "Cute kawaii girly idle Profile pose", false },
+				{ 76261461321661, "★ curiously cute sitting pose", false },
+				{ 4391208058, "Shuffle", false },
+				{ 88859617281337, "WOOF BARK WOOF", false },
+				{ 10370922566, "Sidekicks - George Ezra", false },
+				{ 103040723950430, "Gojo Floating JJK/ The Honored One", false },
+				{ 82995540773684, "Tornado", false },
+				{ 3994130516, "Bodybuilder", false },
+				{ 13823339506, "Tommy - Archer", false },
+				{ 4849487550, "Agree", false },
+				{ 79216795769647, "Tall Scary Creature", false },
+				{ 83917238288783, "cute dancy dance", true },
+				{ 122147154162464, "Hakari Dance", false },
+				{ 118853736905967, "Wall Aura Farm Pose", false },
+				{ 4849497510, "Power Blast", false },
+				{ 15123050663, "Bone Chillin' Bop", false },
+				{ 103102322875221, "Skibidi Toilet - Titan Speakerman Laser Spin", false },
+				{ 133685484220846, "KATSEYE - GNARLY", false },
+				{ 117119421748582, "Jamal Brazil Groove", true },
+				{ 111539333518905, "Needy V sit Split Drop (OG) 🔮", true },
+				{ 72947568152049, "Cute Sit", false },
+				{ 14353419229, "Baby Queen - Dramatic Bow", false },
+				{ 3576745472, "Fashionable", false },
+				{ 106370760824973, "Possessed Glitcher", false },
+				{ 98388724133440, "[OG] i got that feeling 💌", true },
+				{ 122740406985544, "Fly Aura pose", true },
+				{ 80573839869810, "Kneeling Sit", true },
+				{ 89360359553814, "Sunflower", true },
+				{ 73181508272121, "Party Funk", true },
+				{ 73049975726252, "Yeah, Im Listening...", true },
+				{ 121621458064078, "Wish Nle Choppa", true },
+				{ 123838228516868, "[Limited] Cute Crying Beg Kneeling", true },
+				{ 126941778232900, "♡ kawaii sit emote with cat paws", true },
+				{ 116416944161215, "♡ kawaii schoolgirl sitting pose", true },
+				{ 76598468338330, "Fall From The Sky", true },
+				{ 88456688900525, "Reanimated 🎃", true },
+				{ 77080714986256, "Moving Like Berney", true },
+				{ 77016426916262, "Rich Girl Flowside", true },
+				{ 108039409530319, "Runway Victoria Fashion Model", true },
+				{ 137636136946673, "Tubo Dance", true },
+				{ 87433588393157, "Cute Bouncy Side Sway", true },
+				{ 131145074585836, "Viltrum Hovering Aura Farm (Invincible)", true },
+				{ 82831170082875, "Stopframe: Puppet Panic", true },
+				{ 98094482524931, "Met my match [Say Now]", true },
+				{ 96059912242002, "Them Hips", true },
+				{ 79087653980931, "Master Lord Verity Setalcix", true },
+				{ 73710784930636, "Cry for Me - [TREND] IronMouse", true },
+				{ 121132556900708, "Floating Aura", true },
+				{ 99246819283563, "Goofball Griddy [MOCAP]", true },
+				{ 128814921948602, "Super Funk Dance", true },
+				{ 104751376138396, "Worm Infinite Roll", true },
+				{ 87636335269696, "Consegue dançar igual ?", true },
+				{ 121793928888678, "cute bratty whiny adorable girl sit pose", true },
+				{ 83161594745131, "⏳[BEST] I'M A DEMON WITH THIS 😈", true },
+				{ 90418129403506, "Relaxed Cloud Floating", true },
+				{ 86938925857615, "Superhero Pose", true },
+				{ 90923883214225, "Master Of Humanity!", true },
+				{ 122249198697121, "Nameless monster dance", true },
+				{ 140461713742908, "He Pedals Funk Emote", true },
+				{ 76618267763261, "𑣲 KISS N TELL - AESPA", true },
+				{ 93647110985355, "Scuba [FULL VERSION]", true },
+				{ 73148982402007, "Fake Running Disconnect lag", true },
+				{ 82966937735800, "I got that feeling trend", true },
+				{ 90121297911534, "Jeyke Funk", true },
+				{ 98840627727488, "Peaches - Justin Bieber", true },
+				{ 126178027638785, "Tinashe - Nasty Girl", true },
+				{ 98049374819131, "Diego - Jojo Anime Pose", true },
+				{ 114800420888775, "Pennywise Dance 👹🤡", true },
+				{ 135157485603506, "[⭐] Scubaa Scubaa", true },
+				{ 105765738022096, "♡ : Cutesy standing doll pose", true },
+				{ 131171992525098, "One Arm Push Ups", true },
+				{ 101582120044688, "sweet puppy girl kicking leg profile pose", true },
+				{ 81708325562195, "Cute Needy Happy Shake Dance", true },
+				{ 105201400407575, "Cute Happy Bouncy Jumps Dance", true },
+				{ 81346143283632, "needy kawaii puppy sitting profile pose", true },
+				{ 71819053016074, "[BEST] i got that feeling MM2", true },
+				{ 116521788694479, "🔥 The Bass Trend", true },
+				{ 73757246494324, "Werewolf Alpha Transformation - Halloween", true },
+				{ 126498185656790, "Happy Bounce", true },
+				{ 78623311762574, "WestPole Emote [OG]", true },
+				{ 97926971484337, "12 to 12 [PERFECT]", true },
+				{ 96403455275692, "Trend Dance of Lord Verity", true },
+				{ 94724645460262, "The worm move", true },
+				{ 128779345795509, "Alien goofy wave✨", true },
+				{ 97052459488169, "Feeling myself emote", true },
+				{ 120918501233808, "Funy tubo dance", true },
+				{ 134942500171655, "Pathetic Cat (Furry)", true },
+				{ 129965107667269, "Lagui pose", true },
+				{ 93072647185531, "🔥 Dorobo Dance [V2]", true },
+				{ 103722701410933, "Brazilian Dance Viral Trend", true },
+				{ 110569633730333, "Lord Verity dance! (Emote)", true },
+				{ 88160454118928, "[BEST] Salsa", true },
+				{ 123604753182408, "ADELA - Nicole Kidman", true },
+				{ 110059706944899, "im a demon with this nh (balenci balenci) Dance", true },
+				{ 140594655288573, "Mangarap Dance", true },
+				{ 91914407217006, "The Bass Trend V2", true },
+				{ 90960483742655, "MM2 fake death pose (unique)", true },
+				{ 139324301384120, "Cute anime girl pose (cute)", true },
+				{ 117343790961625, "BLACKPINK ROSÉ - On The Ground", true },
+				{ 128860586829249, "anime dance", true },
+				{ 119998025796052, "Super Needy Jiggly Shake Dance", true },
+				{ 89733893354683, "Cute Bouncy Shake Dance", true },
+				{ 102174264026632, "GG Animation", true },
+				{ 86375122997153, "still idle", true },
+				{ 112654855034352, "Green Lantern Aura Pose", true },
+				{ 132600795042399, "Bby Wow trend", true },
+				{ 73193222304259, "Jamal Dance 3.0", true },
+				{ 87663078346140, "Halloween Vampire ´ཀ` Zombie ҂ Coffin Crawl Pose", true },
+				{ 99311131968819, "Stopframe: Sneaky Shuffle", true },
+				{ 138127306398554, "Confident Flying Aura Farming", true },
+				{ 106724593413222, "Cutsey Flying Aura 💕", true },
+				{ 122901201145982, "Emo Floating Aura", true },
+				{ 132697034165623, "🤡💀 Murder Mystery 2 OOF 💀🤡", true },
+				{ 108435804337942, "Murder Mystery 2 💀👹🥹🤡", true },
+				{ 109436261994235, "Shy Vampire", true },
+				{ 100120361806075, "MM2 💀🤡", true },
+				{ 94897348118820, "MM2 💀😭😵🤡", true },
+				{ 104120919345158, "♡ cute halloween headless holding your head pose", true },
+				{ 96021230764442, "[OG] Milwaukee Bounce", true },
+				{ 116215733070133, "Just Wanna Rock (Lil Uzi Vert)", true },
+				{ 125450302010193, "💀 L Dance", true },
+				{ 108395206588249, "💀mm2 fake side lay", true },
+				{ 91339094607949, "Ballerina Spin", true },
+				{ 91341416163208, "Cute Sitting", true },
+				{ 82555721533394, "Choo Choo TRAIN", true },
+				{ 117498793976482, "Snowman Dance - Left", true },
+				{ 123032739590624, "Snowman Dance - Right", true },
+				{ 83190195248548, "Boredom", true },
+				{ 106393319667237, "\"Don't Stop Til' You Get Enough\" Music Video Intro", true },
+				{ 79729995051649, "Chedder Bbq Wavy Sour Cream and Onion /Trend Dance", true },
+				{ 111937410622410, "Balance balance", true },
+				{ 126198554443561, "I had a hunch", true },
+				{ 110870173502552, "ghostly possession, pose, aura", true },
+				{ 133537618008799, "Toxic Laugh", true },
+				{ 71555837867329, "NPC Greeting", true },
+				{ 80160023079097, "[Mini Me] Gangnam Style", true },
+				{ 80069514148007, "Vezna Idle Animation", true },
+				{ 113267287854914, "cute kawaii sit", true },
+				{ 119535274797446, "Press F to inspect", true },
+				{ 76934438548184, "Kangaroo Dance King Aura", true },
+				{ 138032573559043, "Orange Caramel Chaewon Catallena Dance", true },
+				{ 95654893473488, "Passinho do Jamal 🇧🇷 Mandrake", true },
+				{ 99399545142101, "Headless Swap", true },
+				{ 99576158170768, "Everybody - Backstreet Boys", true },
+			}
+			local HttpService = game:GetService("HttpService")
+			local AvatarEditorService = game:GetService("AvatarEditorService")
+			local green = Color3.fromRGB(104, 222, 92)
+			local cardColor = Color3.fromRGB(36, 36, 38)
+			local cardHover = Color3.fromRGB(48, 48, 52)
+			local footerColor = Color3.fromRGB(17, 17, 19)
+			local slotOrder = { "idle", "walk", "run", "jump", "fall", "climb", "swim" }
+			local validSlots = {
+				idle = true,
+				walk = true,
+				run = true,
+				jump = true,
+				fall = true,
+				climb = true,
+				swim = true,
+				swimidle = true,
+			}
+			local assetSlot = {
+				IdleAnimation = 1,
+				WalkAnimation = 2,
+				RunAnimation = 3,
+				JumpAnimation = 4,
+				FallAnimation = 5,
+				ClimbAnimation = 6,
+				SwimAnimation = 7,
+			}
+
+			local function idStr(id)
+				return string.format("%.0f", id)
+			end
+
+			local function normName(s)
+				s = s:lower():gsub("animations?", ""):gsub("package", ""):gsub("pack", ""):gsub("[^%w]", "")
+				return s
+			end
+
+			local classicByName = {}
+			for _, cat in ipairs(animPacks) do
+				for _, p in ipairs(cat[2]) do
+					classicByName[normName(p[1])] = p
+				end
+			end
+
+			local function classicSlots(p)
+				local function wrap(v)
+					return v and v ~= 0 and { "rbxassetid://" .. idStr(v) } or nil
+				end
+
+				local idle2 = p[3] and p[3] ~= 0 and p[3] or p[2]
+				return {
+					idle = { "rbxassetid://" .. idStr(p[2]), "rbxassetid://" .. idStr(idle2) },
+					walk = wrap(p[4]),
+					run = wrap(p[5]),
+					jump = wrap(p[6]),
+					fall = wrap(p[7]),
+					climb = wrap(p[8]),
+					swim = wrap(p[9]),
+					swimidle = wrap(p[10]),
+				}
+			end
+
+			local function bundleAssets(items)
+				local a = { 0, 0, 0, 0, 0, 0, 0 }
+				for _, item in ipairs(items or {}) do
+					local k = assetSlot[tostring(item.AssetType or "")]
+					if not k and item.Name then
+						local n = item.Name:lower()
+						for i, s in ipairs(slotOrder) do
+							if n:find(s, 1, true) then
+								k = i
+								break
+							end
+						end
+					end
+					if k and (item.Type == nil or item.Type == "Asset") then
+						a[k] = item.Id
+					end
+				end
+				return a
+			end
+
+			local bundleList, bundleById = {}, {}
+
+			local function addBundle(id, name, cache, isNew, at)
+				local b = bundleById[id]
+				if b then
+					if isNew then
+						b.new = true
+					end
+					return b, false
+				end
+				b = { id = id, name = name, assets = cache, new = isNew, kind = "b" }
+				bundleById[id] = b
+				if at then
+					table.insert(bundleList, at, b)
+				else
+					table.insert(bundleList, b)
+				end
+				return b, true
+			end
+
+			for _, r in ipairs(bundles) do
+				addBundle(r[1], r[2], { r[3], r[4], r[5], r[6], r[7], r[8], r[9] }, false)
+			end
+			for _, r in ipairs(newBundles) do
+				addBundle(r[1], r[2], { r[3], r[4], r[5], r[6], r[7], r[8], r[9] }, true)
+			end
+			local emoteList, emoteById = {}, {}
+			for _, r in ipairs(emotes) do
+				local e = { id = r[1], name = r[2], new = r[3], kind = "e" }
+				table.insert(emoteList, e)
+				emoteById[r[1]] = e
+			end
+			local favs = {}
+
+			local function favKey(item)
+				return item.kind .. idStr(item.id)
+			end
+
+			pcall(function()
+				if isfile and readfile and isfile("rockhub_favs.json") then
+					for _, f in ipairs(HttpService:JSONDecode(readfile("rockhub_favs.json"))) do
+						local item = { kind = f.kind, id = tonumber(f.id), name = f.name }
+						if f.assets then
+							item.assets = {}
+							for i, v in ipairs(f.assets) do
+								item.assets[i] = tonumber(v) or 0
+							end
+						end
+						if item.id then
+							favs[favKey(item)] = item
+						end
+					end
+				end
+			end)
+
+			local function saveFavs()
+				if not writefile then
+					return
+				end
+				local rows = {}
+				for _, item in pairs(favs) do
+					local f = { kind = item.kind, id = idStr(item.id), name = item.name }
+					if item.assets then
+						f.assets = {}
+						for i, v in ipairs(item.assets) do
+							f.assets[i] = idStr(v)
+						end
+					end
+					table.insert(rows, f)
+				end
+				pcall(writefile, "rockhub_favs.json", HttpService:JSONEncode(rows))
+			end
+
+			local function favList()
+				local out = {}
+				for _, f in pairs(favs) do
+					local item = f.kind == "b" and bundleById[f.id] or f.kind == "e" and emoteById[f.id] or f
+					table.insert(out, item)
+				end
+				table.sort(out, function(a, b)
+					return a.name:lower() < b.name:lower()
+				end)
+				return out
+			end
+
+			local animCache = {}
+
+			local function loadAnims(assetId)
+				if animCache[assetId] then
+					return animCache[assetId]
+				end
+				local ok, objs = pcall(function()
+					return game:GetObjects("rbxassetid://" .. idStr(assetId))
+				end)
+				if not ok or type(objs) ~= "table" then
+					return {}
+				end
+				local anims = {}
+				for _, o in ipairs(objs) do
+					local list = o:GetDescendants()
+					table.insert(list, 1, o)
+					for _, a in ipairs(list) do
+						if a:IsA("Animation") and a.AnimationId ~= "" then
+							table.insert(anims, { slot = a.Parent and a.Parent.Name:lower() or "", name = a.Name, id = a.AnimationId })
+						end
+					end
+				end
+				table.sort(anims, function(x, y)
+					return x.name < y.name
+				end)
+				animCache[assetId] = anims
+				return anims
+			end
+
+			local slotCache = {}
+
+			local function getSlots(b)
+				if slotCache[b.id] then
+					return slotCache[b.id]
+				end
+				local k = classicByName[normName(b.name)]
+				if k then
+					slotCache[b.id] = classicSlots(k)
+					return slotCache[b.id]
+				end
+				local slots, any = {}, false
+				for i, asset in ipairs(b.assets or {}) do
+					if asset and asset ~= 0 then
+						for _, a in ipairs(loadAnims(asset)) do
+							local s = validSlots[a.slot] and a.slot or slotOrder[i]
+							slots[s] = slots[s] or {}
+							table.insert(slots[s], a.id)
+							any = true
+						end
+					end
+				end
+				if any then
+					slotCache[b.id] = slots
+					return slots
+				end
+			end
+
+			local origAnims, currentTab2 = nil, nil
+			local function updateActive() end
+
+			local function getAnimate()
+				local c = player.Character
+				return c and c:FindFirstChild("Animate")
+			end
+
+			local function sortedAnims(folder)
+				local t = {}
+				for _, a in ipairs(folder:GetChildren()) do
+					if a:IsA("Animation") then
+						table.insert(t, a)
+					end
+				end
+				table.sort(t, function(x, y)
+					return x.Name < y.Name
+				end)
+				return t
+			end
+
+			local function backupAnims(animate)
+				if origAnims then
+					return
+				end
+				origAnims = {}
+				for _, folder in ipairs(animate:GetChildren()) do
+					if validSlots[folder.Name:lower()] then
+						for _, a in ipairs(sortedAnims(folder)) do
+							origAnims[a] = a.AnimationId
+						end
+					end
+				end
+			end
+
+			local function restartAnimate()
+				local animate, hum = getAnimate(), getHumanoid()
+				if not animate or not hum then
+					return
+				end
+				animate.Disabled = true
+				for _, tr in ipairs(hum:GetPlayingAnimationTracks()) do
+					tr:Stop(0)
+				end
+				animate.Disabled = false
+			end
+
+			local function applySlots(slots)
+				local animate = getAnimate()
+				if not animate then
+					return false
+				end
+				backupAnims(animate)
+				for _, folder in ipairs(animate:GetChildren()) do
+					local ids = slots[folder.Name:lower()]
+					if ids and #ids > 0 then
+						for i, a in ipairs(sortedAnims(folder)) do
+							a.AnimationId = ids[i] or ids[1]
+						end
+					end
+				end
+				restartAnimate()
+				return true
+			end
+
+			local function savePack(b)
+				config["Free anims/pack"] = b and { kind = "b", id = b.id, name = b.name, assets = b.assets } or nil
+				dirty, dirtyAt = true, os.clock()
+			end
+
+			local function resetAnims()
+				currentTab2 = nil
+				savePack(nil)
+				if origAnims then
+					for a, id in pairs(origAnims) do
+						if a.Parent then
+							a.AnimationId = id
+						end
+					end
+					restartAnimate()
+				end
+				updateActive()
+			end
+
+			local busy = false
+
+			local function applyPack(b)
+				if busy then
+					return
+				end
+				busy = true
+				task.spawn(function()
+					if not slotCache[b.id] and not classicByName[normName(b.name)] then
+						notify("Loading", b.name)
+					end
+					local slots = getSlots(b)
+					busy = false
+					if not slots then
+						notify("Free anims", "can't load pack (no GetObjects in executor)")
+						return
+					end
+					local hum = getHumanoid()
+					if hum and hum.RigType == Enum.HumanoidRigType.R6 and not b.name:find("R6") then
+						notify("R6 avatar", "most packs are made for R15")
+					end
+					if applySlots(slots) then
+						currentTab2 = { id = b.id, slots = slots }
+						savePack(b)
+						notify("Animation pack", b.name)
+						updateActive()
+					end
+				end)
+			end
+
+			local emoteTrack
+			local emoteAnims = {}
+
+			local function stopEmote()
+				if emoteTrack then
+					pcall(function()
+						emoteTrack:Stop(0.2)
+					end)
+					emoteTrack = nil
+				end
+			end
+
+			local function playEmote(e)
+				local hum = getHumanoid()
+				if not hum then
+					return
+				end
+				task.spawn(function()
+					local menuSeq2 = emoteAnims[e.id]
+					if not menuSeq2 then
+						local list = loadAnims(e.id)
+						menuSeq2 = list[1] and list[1].id
+						emoteAnims[e.id] = menuSeq2
+					end
+					stopEmote()
+					if menuSeq2 then
+						local anim = Instance.new("Animation")
+						anim.AnimationId = menuSeq2
+						local animator = hum:FindFirstChildOfClass("Animator") or hum
+						local ok, tr = pcall(function()
+							return animator:LoadAnimation(anim)
+						end)
+						if ok and tr then
+							tr.Priority = Enum.AnimationPriority.Action
+							tr.Looped = true
+							tr:Play(0.2)
+							emoteTrack = tr
+							notify("Emote", e.name)
+							return
+						end
+					end
+					local ok, _, tr = pcall(function()
+						return hum:PlayEmoteAndGetAnimTrackById(e.id)
+					end)
+					if ok and tr then
+						emoteTrack = tr
+						notify("Emote", e.name)
+					else
+						notify("Free anims", "can't play: " .. e.name)
+					end
+				end)
+			end
+
+			connect(RunService.Heartbeat, function()
+				if emoteTrack then
+					local hum = getHumanoid()
+					if hum and hum.MoveDirection.Magnitude > 0.1 then
+						stopEmote()
+					end
+				end
+			end)
+
+			stopAnims = function()
+				stopEmote()
+				resetAnims()
+			end
+			register("Free anims/pack", function(v)
+				if type(v) == "table" and v.id then
+					task.spawn(function()
+						local char = player.Character or player.CharacterAdded:Wait()
+						char:WaitForChild("Animate", 10)
+						task.wait(0.5)
+						if config["Free anims/pack"] == v and not currentTab2 then
+							applyPack(v)
+						end
+					end)
+				elseif v == false then
+					resetAnims()
+				end
+			end, function()
+				return config["Free anims/pack"] or false
+			end, false)
+
+			connect(player.CharacterAdded, function(char)
+				origAnims = nil
+				emoteTrack = nil
+				if not currentTab2 then
+					return
+				end
+				char:WaitForChild("Animate", 10)
+				task.wait(0.3)
+				applySlots(currentTab2.slots)
+			end)
+			local page = animsTab.page
+			animsTab.custom = true
+			animsTab.title.Visible = false
+			animsTab.desc.Visible = false
+			page.ScrollingEnabled = false
+			page.ScrollBarThickness = 0
+			page.CanvasSize = UDim2.new()
+			local mode = "Bundles"
+			local filter = "All"
+			local query = ""
+			local lookup
+			local refresh
+			local bar = create("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, ZIndex = 3, Parent = page })
+			local tabs2, tabX = {}, 0
+			for _, sub in ipairs({ "Bundles", "Emotes", "Favs" }) do
+				local on = sub == mode
+				local w = TextService:GetTextSize(sub, 13, Enum.Font.GothamMedium, Vector2.new(200, 40)).X + 34
+				local b = create("TextButton", {
+					Text = "",
+					AutoButtonColor = false,
+					BackgroundColor3 = Color3.fromRGB(90, 90, 90),
+					BackgroundTransparency = on and 0.35 or 0.85,
+					Position = UDim2.fromOffset(tabX, 0),
+					Size = UDim2.fromOffset(w, 30),
+					ZIndex = 3,
+					Parent = bar,
+				})
+				addCorner(b, 9)
+				local d = create("Frame", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.new(0, 13, 0.5, 0),
+					Size = UDim2.fromOffset(on and 6 or 0, on and 6 or 0),
+					BackgroundColor3 = accentColor,
+					BorderSizePixel = 0,
+					ZIndex = 4,
+					Parent = b,
+				})
+				makeRound(d)
+				local l = create("TextLabel", {
+					Text = sub,
+					Font = Enum.Font.GothamMedium,
+					TextSize = 13,
+					TextColor3 = on and accentColor or dimColor,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(on and 22 or 17, 0),
+					Size = UDim2.new(1, -22, 1, 0),
+					ZIndex = 4,
+					Parent = b,
+				})
+				tabs2[sub] = { b = b, dot = d, lbl = l }
+				tabX += w + 4
+			end
+
+			local function searchBox(parent, pos, size, placeholder, withIcon)
+				local f = create("Frame", {
+					Position = pos,
+					Size = size,
+					BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+					ZIndex = 3,
+					Parent = parent,
+				})
+				addCorner(f, 9)
+				local st = addStroke(f)
+				local left = 12
+				if withIcon then
+					local icon = create("Frame", {
+						AnchorPoint = Vector2.new(0, 0.5),
+						Position = UDim2.new(0, 10, 0.5, 0),
+						Size = UDim2.fromOffset(12, 12),
+						BackgroundTransparency = 1,
+						ZIndex = 4,
+						Parent = f,
+					})
+					local ring = create("Frame", { Size = UDim2.fromOffset(8, 8), BackgroundTransparency = 1, ZIndex = 4, Parent = icon })
+					makeRound(ring)
+					create("UIStroke", { Color = dimColor, Thickness = 1.6, Parent = ring })
+					line(icon, 7, 7, 11, 11, 1.6).ZIndex = 4
+					left = 30
+				end
+				local box = create("TextBox", {
+					Text = "",
+					PlaceholderText = placeholder,
+					PlaceholderColor3 = mutedColor,
+					Font = Enum.Font.Gotham,
+					TextSize = 12,
+					TextColor3 = accentColor,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					ClearTextOnFocus = false,
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(left, 0),
+					Size = UDim2.new(1, -left - 8, 1, 0),
+					ZIndex = 4,
+					Parent = f,
+				})
+				connect(box.Focused, function()
+					tween(st, 0.2, { Color = Color3.fromRGB(120, 120, 120) })
+				end)
+				connect(box.FocusLost, function()
+					tween(st, 0.2, { Color = strokeColor })
+				end)
+				return box
+			end
+
+			local filterBox = searchBox(bar, UDim2.fromOffset(tabX + 6, 0), UDim2.new(1, -(tabX + 6), 0, 30), "Search...", true)
+			local lookupBox = searchBox(page, UDim2.fromOffset(0, 38), UDim2.new(1, -72, 0, 34), "Search packs or paste bundle ID / link", false)
+			local goBtn = create("TextButton", {
+				Text = "Go",
+				Font = Enum.Font.GothamMedium,
+				TextSize = 13,
+				TextColor3 = Color3.fromRGB(20, 60, 16),
+				BackgroundColor3 = green,
+				AutoButtonColor = false,
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, 0, 0, 38),
+				Size = UDim2.fromOffset(64, 34),
+				ZIndex = 3,
+				Parent = page,
+			})
+			addCorner(goBtn, 9)
+			connect(goBtn.MouseEnter, function()
+				tween(goBtn, 0.15, { BackgroundColor3 = Color3.fromRGB(130, 240, 118) })
+			end)
+			connect(goBtn.MouseLeave, function()
+				tween(goBtn, 0.15, { BackgroundColor3 = green })
+			end)
+			local info = create("TextLabel", {
+				Text = "",
+				Font = Enum.Font.Gotham,
+				TextSize = 12,
+				TextColor3 = dimColor,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(2, 80),
+				Size = UDim2.new(0.45, 0, 0, 18),
+				ZIndex = 3,
+				Parent = page,
+			})
+			local chips = create("Frame", {
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, 0, 0, 79),
+				Size = UDim2.new(0.62, 0, 0, 20),
+				BackgroundTransparency = 1,
+				ZIndex = 3,
+				Parent = page,
+			})
+			create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				HorizontalAlignment = Enum.HorizontalAlignment.Right,
+				VerticalAlignment = Enum.VerticalAlignment.Center,
+				Padding = UDim.new(0, 4),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Parent = chips,
+			})
+
+			local function menuButton2(text, order, on, actionCard, cb)
+				local w = TextService:GetTextSize(text, 11, Enum.Font.GothamMedium, Vector2.new(200, 40)).X + 16
+				local b = create("TextButton", {
+					Text = text,
+					Font = Enum.Font.GothamMedium,
+					TextSize = 11,
+					TextColor3 = (on or actionCard) and accentColor or dimColor,
+					BackgroundColor3 = actionCard and elemColor or Color3.fromRGB(90, 90, 90),
+					BackgroundTransparency = actionCard and 0 or (on and 0.35 or 1),
+					AutoButtonColor = false,
+					Size = UDim2.fromOffset(w, 20),
+					LayoutOrder = order,
+					ZIndex = 4,
+					Parent = chips,
+				})
+				addCorner(b, 6)
+				if actionCard then
+					addStroke(b)
+				end
+				connect(b.MouseEnter, function()
+					if not on then
+						tween(b, 0.15, { TextColor3 = accentColor })
+					end
+				end)
+				connect(b.MouseLeave, function()
+					if not on and not actionCard then
+						tween(b, 0.15, { TextColor3 = dimColor })
+					end
+				end)
+				connect(b.MouseButton1Click, cb)
+			end
+
+			local function rebuildChips()
+				for _, c in ipairs(chips:GetChildren()) do
+					if c:IsA("GuiButton") then
+						c:Destroy()
+					end
+				end
+				local n = 0
+				if lookup then
+					n += 1
+					menuButton2("Back", n, false, true, function()
+						lookup = nil
+						lookupBox.Text = ""
+						refresh()
+					end)
+				elseif mode ~= "Favs" then
+					for _, f in ipairs({ "All", "New 2026", "Popular" }) do
+						n += 1
+						menuButton2(f, n, filter == f, false, function()
+							filter = f
+							refresh()
+						end)
+					end
+				end
+				if mode ~= "Emotes" then
+					n += 1
+					menuButton2("Reset", n, false, true, function()
+						resetAnims()
+						notify("Free anims", "default animations")
+					end)
+				end
+				if mode ~= "Bundles" then
+					n += 1
+					menuButton2("Stop", n, false, true, function()
+						stopEmote()
+					end)
+				end
+			end
+
+			local grid = create("ScrollingFrame", {
+				Position = UDim2.fromOffset(0, 104),
+				Size = UDim2.new(1, 0, 1, -104),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ScrollBarThickness = 3,
+				ScrollBarImageColor3 = dimColor,
+				ScrollBarImageTransparency = 0.3,
+				VerticalScrollBarInset = Enum.ScrollBarInset.Always,
+				ScrollingDirection = Enum.ScrollingDirection.Y,
+				CanvasSize = UDim2.new(),
+				ZIndex = 2,
+				Parent = page,
+			})
+			create("UIPadding", {
+				PaddingTop = UDim.new(0, 1),
+				PaddingLeft = UDim.new(0, 1),
+				PaddingRight = UDim.new(0, 4),
+				Parent = grid,
+			})
+			local layout = create("UIGridLayout", {
+				CellSize = UDim2.new(0.3333333333333333, -6, 0, 160),
+				CellPadding = UDim2.fromOffset(8, 8),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Parent = grid,
+			})
+			local emptyLabel = create("TextLabel", {
+				Text = "",
+				Font = Enum.Font.GothamMedium,
+				TextSize = 12,
+				TextColor3 = mutedColor,
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(0, 144),
+				Size = UDim2.new(1, 0, 0, 20),
+				ZIndex = 3,
+				Parent = page,
+			})
+
+			local function updateCanvas()
+				grid.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 8)
+			end
+
+			connect(layout:GetPropertyChangedSignal("AbsoluteContentSize"), updateCanvas)
+			local cards, strokes = {}, {}
+
+			updateActive = function()
+				for item, st in pairs(strokes) do
+					local on = currentTab2 and item.kind == "b" and currentTab2.id == item.id
+					st.Color = on and accentColor or strokeColor
+					st.Transparency = on and 0.1 or 0
+				end
+			end
+
+			local function makeCard(item, order)
+				local card = create("TextButton", {
+					Text = "",
+					AutoButtonColor = false,
+					BackgroundTransparency = 1,
+					LayoutOrder = order,
+					ZIndex = 2,
+					Parent = grid,
+				})
+				table.insert(cards, card)
+				local thumb = create("Frame", { Size = UDim2.new(1, 0, 0, 102), BackgroundColor3 = cardColor, ZIndex = 2, Parent = card })
+				addCorner(thumb, 8)
+				strokes[item] = addStroke(thumb)
+				create("ImageLabel", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.new(0.5, 0, 0.5, 4),
+					Size = UDim2.fromOffset(84, 84),
+					BackgroundTransparency = 1,
+					ScaleType = Enum.ScaleType.Fit,
+					Image = ("rbxthumb://type=%s&id=%s&w=150&h=150"):format(item.kind == "b" and "BundleThumbnail" or "Asset", idStr(item.id)),
+					ZIndex = 3,
+					Parent = thumb,
+				})
+				if item.new then
+					local badge = create("TextLabel", {
+						Text = "NEW 2026",
+						Font = Enum.Font.GothamBold,
+						TextSize = 9,
+						TextColor3 = Color3.fromRGB(10, 10, 10),
+						BackgroundColor3 = accentColor,
+						Position = UDim2.fromOffset(6, 6),
+						Size = UDim2.fromOffset(52, 15),
+						ZIndex = 4,
+						Parent = thumb,
+					})
+					addCorner(badge, 5)
+				end
+				local idBtn = create("TextButton", {
+					Text = "ID",
+					Font = Enum.Font.GothamBold,
+					TextSize = 11,
+					TextColor3 = textColor,
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -26, 0, 4),
+					Size = UDim2.fromOffset(20, 18),
+					ZIndex = 5,
+					Parent = thumb,
+				})
+				connect(idBtn.MouseButton1Click, function()
+					if setclipboard then
+						setclipboard(idStr(item.id))
+						notify("Copied", "ID " .. idStr(item.id))
+					else
+						notify("ID", idStr(item.id))
+					end
+				end)
+				local favBtn = create("TextButton", {
+					Text = favs[favKey(item)] and "★" or "☆",
+					Font = Enum.Font.GothamBold,
+					TextSize = 14,
+					TextColor3 = favs[favKey(item)] and accentColor or dimColor,
+					BackgroundTransparency = 1,
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -4, 0, 3),
+					Size = UDim2.fromOffset(20, 20),
+					ZIndex = 5,
+					Parent = thumb,
+				})
+				connect(favBtn.MouseButton1Click, function()
+					local key = favKey(item)
+					if favs[key] then
+						favs[key] = nil
+						notify("Favs", "removed " .. item.name)
+					else
+						favs[key] = { kind = item.kind, id = item.id, name = item.name, assets = item.assets }
+						notify("Favs", "added " .. item.name)
+					end
+					saveFavs()
+					favBtn.Text = favs[key] and "★" or "☆"
+					favBtn.TextColor3 = favs[key] and accentColor or dimColor
+					if mode == "Favs" then
+						refresh()
+					end
+				end)
+				local footer = create("Frame", {
+					Position = UDim2.fromOffset(0, 108),
+					Size = UDim2.new(1, 0, 1, -108),
+					BackgroundColor3 = footerColor,
+					ZIndex = 2,
+					Parent = card,
+				})
+				addCorner(footer, 8)
+				create("TextLabel", {
+					Text = item.name:upper(),
+					Font = Enum.Font.GothamBold,
+					TextSize = 11,
+					TextColor3 = accentColor,
+					TextWrapped = true,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(6, 0),
+					Size = UDim2.new(1, -12, 1, 0),
+					ZIndex = 3,
+					Parent = footer,
+				})
+				connect(card.MouseEnter, function()
+					tween(thumb, 0.15, { BackgroundColor3 = cardHover })
+				end)
+				connect(card.MouseLeave, function()
+					tween(thumb, 0.15, { BackgroundColor3 = cardColor })
+				end)
+				connect(card.MouseButton1Click, function()
+					if item.kind == "b" then
+						applyPack(item)
+					else
+						playEmote(item)
+					end
+				end)
+			end
+
+			local list, shown = {}, 0
+
+			local function loadMore()
+				local last = math.min(#list, shown + 30)
+				for i = shown + 1, last do
+					makeCard(list[i], i)
+				end
+				shown = last
+				updateActive()
+				updateCanvas()
+			end
+
+			connect(grid:GetPropertyChangedSignal("CanvasPosition"), function()
+				if shown < #list and grid.CanvasPosition.Y + grid.AbsoluteWindowSize.Y > grid.CanvasSize.Y.Offset - 250 then
+					loadMore()
+				end
+			end)
+
+			local function getItems()
+				local src
+				if lookup and lookup.mode == mode then
+					src = lookup.items
+				elseif mode == "Bundles" then
+					src = bundleList
+				elseif mode == "Emotes" then
+					src = emoteList
+				else
+					src = favList()
+				end
+				local out = {}
+				for _, item in ipairs(src) do
+					local pass = lookup or mode == "Favs" or filter == "All" or filter == "New 2026" and item.new or filter == "Popular" and not item.new
+					if pass and (query == "" or item.name:lower():find(query, 1, true)) then
+						table.insert(out, item)
+					end
+				end
+				return out
+			end
+
+			refresh = function()
+				for _, c in ipairs(cards) do
+					c:Destroy()
+				end
+				table.clear(cards)
+				table.clear(strokes)
+				list = getItems()
+				shown = 0
+				grid.CanvasPosition = Vector2.zero
+				loadMore()
+				if lookup and lookup.mode == mode then
+					info.Text = "Results: " .. #list
+				elseif mode == "Bundles" then
+					info.Text = "Bundles loaded: " .. #bundleList
+				elseif mode == "Emotes" then
+					info.Text = "Emotes loaded: " .. #emoteList
+				else
+					info.Text = "Favorites: " .. #list
+				end
+				emptyLabel.Text = #list == 0 and (mode == "Favs" and "tap ☆ on any card to add it here" or "nothing found") or ""
+				rebuildChips()
+			end
+
+			local function setMode(m)
+				if m == mode then
+					return
+				end
+				local old = tabs2[mode]
+				tween(old.b, 0.25, { BackgroundTransparency = 0.85 })
+				tween(old.dot, 0.25, { Size = UDim2.fromOffset(0, 0) })
+				tween(old.lbl, 0.25, { TextColor3 = dimColor, Position = UDim2.fromOffset(17, 0) })
+				mode = m
+				local p = tabs2[m]
+				tween(p.b, 0.25, { BackgroundTransparency = 0.35 })
+				tween(p.dot, 0.25, { Size = UDim2.fromOffset(6, 6) }, Enum.EasingDirection.Out, Enum.EasingStyle.Back)
+				tween(p.lbl, 0.25, { TextColor3 = accentColor, Position = UDim2.fromOffset(22, 0) })
+				lookup = nil
+				lookupBox.Text = ""
+				lookupBox.PlaceholderText = m == "Emotes" and "Search emotes or paste emote ID / link" or "Search packs or paste bundle ID / link"
+				refresh()
+			end
+
+			for sub, p in pairs(tabs2) do
+				connect(p.b.MouseButton1Click, function()
+					setMode(sub)
+				end)
+			end
+			connect(filterBox:GetPropertyChangedSignal("Text"), function()
+				query = filterBox.Text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+				refresh()
+			end)
+
+			local function fetchBundle(num)
+				if bundleById[num] then
+					return bundleById[num]
+				end
+				local ok, d = pcall(function()
+					return AvatarEditorService:GetItemDetailsAsync(num, Enum.AvatarItemType.Bundle)
+				end)
+				return if ok and d and d.BundledItems then {
+					id = num,
+					name = d.Name or "Bundle " .. idStr(num),
+					assets = bundleAssets(d.BundledItems),
+					new = false,
+					kind = "b",
+				} else if ok and d and d.Items then {
+					id = num,
+					name = d.Name or "Bundle " .. idStr(num),
+					assets = bundleAssets(d.Items),
+					new = false,
+					kind = "b",
+				} else nil
+			end
+
+			local searching = false
+
+			local function doSearch()
+				local text = lookupBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+				if text == "" then
+					lookup = nil
+					refresh()
+					return
+				end
+				if searching then
+					return
+				end
+				searching = true
+				local m = mode == "Favs" and "Bundles" or mode
+				task.spawn(function()
+					local num = tonumber(text:match("(%d%d%d%d%d+)"))
+					if num then
+						if m == "Bundles" then
+							local b = fetchBundle(num)
+							if b then
+								bundleById[num] = bundleById[num] or b
+								lookup = { mode = "Bundles", items = { b } }
+								if mode ~= "Bundles" then
+									setMode("Bundles")
+								end
+								refresh()
+								applyPack(b)
+							else
+								notify("Free anims", "bundle " .. idStr(num) .. " not found")
+							end
+						else
+							local e = emoteById[num] or { id = num, name = "Emote " .. idStr(num), kind = "e" }
+							lookup = { mode = "Emotes", items = { e } }
+							refresh()
+							playEmote(e)
+						end
+					else
+						info.Text = "Searching..."
+						local params = CatalogSearchParams.new()
+						params.SearchKeyword = text
+						params.Limit = 60
+						params.IncludeOffSale = true
+						if m == "Emotes" then
+							params.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
+						else
+							params.BundleTypes = { Enum.BundleType.Animations }
+						end
+						local ok, content2 = pcall(function()
+							return AvatarEditorService:SearchCatalogAsync(params)
+						end)
+						if ok and content2 then
+							local items = {}
+							for _, r in ipairs(content2:GetCurrentPage()) do
+								if m == "Emotes" then
+									table.insert(items, emoteById[r.Id] or { id = r.Id, name = r.Name, kind = "e" })
+								else
+									local b = bundleById[r.Id]
+									if not b then
+										b = { id = r.Id, name = r.Name, assets = bundleAssets(r.BundledItems), new = false, kind = "b" }
+										bundleById[r.Id] = b
+									end
+									table.insert(items, b)
+								end
+							end
+							lookup = { mode = m, items = items }
+							if mode ~= m then
+								setMode(m)
+							end
+							refresh()
+						else
+							lookup = nil
+							filterBox.Text = text
+							notify("Search", "catalog offline, filtered local list")
+						end
+					end
+					searching = false
+				end)
+			end
+
+			connect(goBtn.MouseButton1Click, doSearch)
+			connect(lookupBox.FocusLost, function(enter)
+				if enter then
+					doSearch()
+				end
+			end)
+			refresh()
+			task.spawn(function()
+				local function loadAsset(setup)
+					local params = CatalogSearchParams.new()
+					params.SortType = Enum.CatalogSortType.RecentlyCreated
+					params.Limit = 120
+					setup(params)
+					local ok, content2 = pcall(function()
+						return AvatarEditorService:SearchCatalogAsync(params)
+					end)
+					return ok and content2 and content2:GetCurrentPage() or {}
+				end
+
+				local at
+				for i, b in ipairs(bundleList) do
+					if b.new then
+						at = i
+						break
+					end
+				end
+				at = at or #bundleList + 1
+				local newBundles2 = 0
+				for _, r in ipairs(loadAsset(function(p)
+					p.BundleTypes = { Enum.BundleType.Animations }
+				end)) do
+					local _, added = addBundle(r.Id, r.Name, bundleAssets(r.BundledItems), true, at)
+					if added then
+						at += 1
+						newBundles2 += 1
+					end
+				end
+				local newEmotes, pos = 0, 1
+				for _, r in ipairs(loadAsset(function(p)
+					p.AssetTypes = { Enum.AvatarAssetType.EmoteAnimation }
+				end)) do
+					if not emoteById[r.Id] then
+						local e = { id = r.Id, name = r.Name, new = true, kind = "e" }
+						emoteById[r.Id] = e
+						table.insert(emoteList, pos, e)
+						pos += 1
+						newEmotes += 1
+					end
+				end
+				if newBundles2 + newEmotes > 0 then
+					if not lookup and grid.CanvasPosition.Y < 5 then
+						refresh()
+					else
+						info.Text = mode == "Emotes" and "Emotes loaded: " .. #emoteList or mode == "Bundles" and "Bundles loaded: " .. #bundleList or info.Text
+					end
+				end
+			end)
+		end
+		do
+			local backtrack = {
+				on = false,
+				target = "Others",
+				style = "Ghost",
+				color = "Shimmer",
+				custom = Color3.fromHSV(0.999, 0.746, 0.737),
+				material = "ForceField",
+				outline = true,
+				marker = true,
+				delay = 400,
+				count = 4,
+				dist = 150,
+				opacity = 70,
+			}
+			local materials = { ForceField = Enum.Material.ForceField, Neon = Enum.Material.Neon, Glass = Enum.Material.Glass }
+			local red = Color3.fromRGB(255, 58, 58)
+			local blue = Color3.fromRGB(64, 150, 255)
+			local farCf = CFrame.new(0, -50000, 0)
+			local gradients2 = {
+				Aqua = { Color3.fromRGB(90, 230, 255), Color3.fromRGB(150, 95, 255) },
+				Sunset = { Color3.fromRGB(255, 170, 80), Color3.fromRGB(255, 60, 150) },
+			}
+			local folder
+			local data = {}
+			local lastRecord = 0
+
+			local function removeRecord(p)
+				local d = data[p]
+				if d then
+					if d.folder then
+						d.folder:Destroy()
+					end
+					for _, o in ipairs(d.extra or {}) do
+						o:Destroy()
+					end
+				end
+				data[p] = nil
+			end
+
+			local function clearAll()
+				for p in pairs(data) do
+					removeRecord(p)
+				end
+				if folder then
+					folder:Destroy()
+				end
+				folder = nil
+			end
+
+			local function isTarget(p)
+				if backtrack.target == "Self" then
+					return p == player
+				end
+				if backtrack.target == "Others" then
+					return p ~= player
+				end
+				return true
+			end
+
+			local function setup(g, mat)
+				g.Anchored = true
+				g.CanCollide = false
+				g.CanTouch = false
+				g.CanQuery = false
+				g.CastShadow = false
+				g.Material = mat or materials[backtrack.material] or Enum.Material.ForceField
+				g.Transparency = 1
+				g.CFrame = farCf
+				return g
+			end
+
+			local function makeGhostPart(src, parent)
+				local ok, g = pcall(function()
+					return src:Clone()
+				end)
+				if not ok or not g then
+					g = Instance.new("Part")
+					g.Size = src.Size
+				end
+				for _, c in ipairs(g:GetChildren()) do
+					if not c:IsA("DataModelMesh") then
+						c:Destroy()
+					end
+				end
+				pcall(function()
+					g.TextureID = ""
+				end)
+				setup(g)
+				g.Parent = parent
+				return g
+			end
+
+			local function roleColor(p)
+				local char, backpack = p.Character, p:FindFirstChildOfClass("Backpack")
+
+				local function has(n)
+					return char and char:FindFirstChild(n) or backpack and backpack:FindFirstChild(n)
+				end
+
+				if has("Knife") then
+					return red
+				end
+				if has("Gun") then
+					return blue
+				end
+			end
+
+			local function ghostColor(d, f, t)
+				local colorMode = if backtrack.color == "Rainbow" then 46109 else if backtrack.color == "White" then 39828 else if backtrack.color == "Role" then 5129 else if backtrack.color == "Custom" then 11958 else 31519
+				if colorMode == 11958 then
+					local wave = 0.5 + 0.5 * math.sin(t * 3 - f * 5)
+					return backtrack.custom:Lerp(Color3.new(0, 0, 0), f * 0.45):Lerp(accentColor, wave * 0.18)
+				elseif colorMode == 39828 then
+					return accentColor
+				elseif colorMode == 46109 then
+					return Color3.fromHSV((t * 0.25 + f * 0.6) % 1, 0.6, 1)
+				elseif colorMode == 5129 then
+					return d.role or accentColor
+				end
+				local grad = gradients2[backtrack.color]
+				if grad then
+					local k = math.clamp(f + 0.15 * math.sin(t * 2.5 - f * 4), 0, 1)
+					return grad[1]:Lerp(grad[2], k)
+				end
+				local v = 0.5 + 0.5 * math.sin(t * 3 - f * 5)
+				local c = math.floor(90 + v * 165)
+				return Color3.fromRGB(c, c, c)
+			end
+
+			local function key()
+				return backtrack.style .. backtrack.count .. backtrack.material .. tostring(backtrack.outline) .. tostring(backtrack.marker)
+			end
+
+			local function build(p, char)
+				local d = {
+					char = char,
+					key = key(),
+					hist = {},
+					ghosts = {},
+					parts = {},
+					extra = {},
+					vis = 0,
+					folder = create("Model", { Name = p.Name, Parent = folder }),
+				}
+				for _, part in ipairs(char:GetChildren()) do
+					if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+						table.insert(d.parts, part)
+					end
+				end
+				if backtrack.style == "Trail" then
+					local hrp = char:FindFirstChild("HumanoidRootPart")
+
+					local function trail(topBar2, bottom, emission)
+						local a0 = create("Attachment", { Name = "RockHubTrailA", Position = Vector3.new(0, topBar2, 0), Parent = hrp })
+						local a1 = create("Attachment", { Name = "RockHubTrailB", Position = Vector3.new(0, bottom, 0), Parent = hrp })
+						local tr = create("Trail", {
+							Name = "RockHubTrail",
+							Attachment0 = a0,
+							Attachment1 = a1,
+							FaceCamera = false,
+							LightEmission = emission,
+							LightInfluence = 0,
+							MinLength = 0.05,
+							Lifetime = backtrack.delay / 1000,
+							Parent = hrp,
+						})
+						table.insert(d.extra, a0)
+						table.insert(d.extra, a1)
+						table.insert(d.extra, tr)
+						return tr
+					end
+
+					if hrp then
+						d.trail = trail(2.1, -2.8, 0.35)
+						d.core = trail(0.12, -0.12, 1)
+					end
+				else
+					for i = 1, backtrack.count do
+						local g = { vis = 0 }
+						if backtrack.style == "Ghost" then
+							g.map = {}
+							for _, src in ipairs(d.parts) do
+								g.map[src] = makeGhostPart(src, d.folder)
+							end
+						else
+							g.dot = setup(Instance.new("Part"))
+							g.dot.Shape = Enum.PartType.Ball
+							g.dot.Parent = d.folder
+							g.link = setup(Instance.new("Part"))
+							g.link.Parent = d.folder
+						end
+						d.ghosts[i] = g
+					end
+					if backtrack.outline then
+						d.hl = create("Highlight", {
+							Adornee = d.folder,
+							DepthMode = Enum.HighlightDepthMode.Occluded,
+							FillTransparency = 1,
+							OutlineTransparency = 1,
+							Parent = d.folder,
+						})
+					end
+				end
+				if backtrack.marker then
+					d.ring = setup(Instance.new("Part"), Enum.Material.Neon)
+					d.ring.Shape = Enum.PartType.Cylinder
+					d.ring.Size = Vector3.new(0.06, 3.6, 3.6)
+					d.ring.Parent = folder
+					table.insert(d.extra, d.ring)
+					d.disc = setup(Instance.new("Part"), Enum.Material.ForceField)
+					d.disc.Shape = Enum.PartType.Cylinder
+					d.disc.Size = Vector3.new(0.1, 3.2, 3.2)
+					d.disc.Parent = folder
+					table.insert(d.extra, d.disc)
+				end
+				data[p] = d
+				return d
+			end
+
+			local function sample(hist, want)
+				local n = #hist
+				if n == 0 then
+					return
+				end
+				if want <= hist[1].t then
+					return hist[1], hist[1], 0
+				end
+				for i = n, 2, -1 do
+					local a, b = hist[i - 1], hist[i]
+					if a.t <= want then
+						local k = math.clamp((want - a.t) / math.max(b.t - a.t, 0.001), 0, 1)
+						return a, b, k
+					end
+				end
+				return hist[n], hist[n], 0
+			end
+
+			local rayParams = RaycastParams.new()
+			rayParams.FilterType = Enum.RaycastFilterType.Exclude
+			connect(RunService.Heartbeat, function(dt)
+				if not backtrack.on then
+					return
+				end
+				local now = os.clock()
+				local cam = workspace.CurrentCamera
+				if not cam then
+					return
+				end
+				if not folder or not folder.Parent then
+					folder = create("Folder", { Name = "RockHubBackTrack", Parent = cam })
+				end
+				local doRecord = now - lastRecord >= 0.03
+				if doRecord then
+					lastRecord = now
+				end
+				local delaySec = backtrack.delay / 1000
+				local camPos = cam.CFrame.Position
+				local smooth = math.min(dt * 8, 1)
+				local baseTransp = 1 - backtrack.opacity / 100
+				for _, p in ipairs(Players:GetPlayers()) do
+					local char = p.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					local d = data[p]
+					if not isTarget(p) or not hrp or not hum or hum.Health <= 0 then
+						if d then
+							removeRecord(p)
+						end
+						continue
+					end
+					if not d or d.char ~= char or d.key ~= key() then
+						removeRecord(p)
+						d = build(p, char)
+					end
+					if doRecord then
+						local snap = { t = now, root = hrp.CFrame }
+						if backtrack.style == "Ghost" then
+							snap.cf = {}
+							for _, src in ipairs(d.parts) do
+								if src.Parent then
+									snap.cf[src] = src.CFrame
+								end
+							end
+						end
+						table.insert(d.hist, snap)
+						local cutoff = now - delaySec - 0.2
+						while #d.hist > 2 and d.hist[1].t < cutoff do
+							table.remove(d.hist, 1)
+						end
+						if backtrack.color == "Role" then
+							d.role = roleColor(p)
+						end
+					end
+					local near = p == player or (camPos - hrp.Position).Magnitude <= backtrack.dist
+					d.vis += ((near and 1 or 0) - d.vis) * smooth
+					local oa, ob, ok = sample(d.hist, now - delaySec)
+					local pastCf = oa and oa.root:Lerp(ob.root, ok)
+					local apart = pastCf and (pastCf.Position - hrp.Position).Magnitude > 0.35
+					if d.trail then
+						local kps = {}
+						for j = 0, 4 do
+							kps[#kps + 1] = ColorSequenceKeypoint.new(j / 4, ghostColor(d, j / 4, now))
+						end
+						local seq = ColorSequence.new(kps)
+						local vis = d.vis
+
+						local function transpSeq(a0, a1)
+							return NumberSequence.new({
+								NumberSequenceKeypoint.new(0, 1 - (1 - a0) * vis),
+								NumberSequenceKeypoint.new(0.6, 1 - (1 - (a0 + (a1 - a0) * 0.6)) * vis),
+								NumberSequenceKeypoint.new(1, 1),
+							})
+						end
+
+						d.trail.Color = seq
+						d.trail.Lifetime = delaySec
+						d.trail.Transparency = transpSeq(math.min(baseTransp + 0.35, 0.98), 1)
+						d.core.Color = seq
+						d.core.Lifetime = delaySec
+						d.core.Transparency = transpSeq(baseTransp * 0.6, 1)
+					end
+					local lastPos = hrp.Position
+					local shown = false
+					for i, g in ipairs(d.ghosts) do
+						local a, b, k = sample(d.hist, now - delaySec * i / backtrack.count)
+						local rootCf = a and a.root:Lerp(b.root, k)
+						local moved = rootCf and (rootCf.Position - hrp.Position).Magnitude > 0.35
+						g.vis += ((moved and d.vis > 0.02 and 1 or 0) - g.vis) * smooth
+						local frac = (i - 1) / math.max(backtrack.count - 1, 1)
+						local tr = 1 - (1 - (baseTransp + (1 - baseTransp) * 0.75 * frac)) * g.vis * d.vis
+						local col = ghostColor(d, frac, now)
+						if tr < 0.99 then
+							shown = true
+						end
+						if g.map then
+							for src, gp in pairs(g.map) do
+								local ca, cb = a and a.cf and a.cf[src], b and b.cf and b.cf[src]
+								if ca and tr < 0.99 then
+									gp.CFrame = cb and ca:Lerp(cb, k) or ca
+									gp.Color = col
+									gp.Transparency = tr
+								elseif gp.Transparency < 1 then
+									gp.Transparency = 1
+									gp.CFrame = farCf
+								end
+							end
+						elseif g.dot then
+							if rootCf and tr < 0.99 then
+								local pos = rootCf.Position
+								local sz = 0.9 - 0.5 * frac
+								g.dot.Size = Vector3.one * sz
+								g.dot.CFrame = CFrame.new(pos)
+								g.dot.Color = col
+								g.dot.Transparency = tr
+								local dist = (pos - lastPos).Magnitude
+								if dist > 0.05 then
+									g.link.Size = Vector3.new(0.12, 0.12, dist)
+									g.link.CFrame = CFrame.lookAt((pos + lastPos) / 2, pos)
+									g.link.Color = col
+									g.link.Transparency = math.min(tr + 0.15, 1)
+								else
+									g.link.Transparency = 1
+								end
+								lastPos = pos
+							elseif g.dot.Transparency < 1 then
+								g.dot.Transparency = 1
+								g.link.Transparency = 1
+								g.dot.CFrame, g.link.CFrame = farCf, farCf
+							end
+						end
+					end
+					if d.hl then
+						local on = shown and d.vis > 0.05
+						d.hl.Enabled = on
+						if on then
+							d.hl.OutlineColor = ghostColor(d, 0, now)
+							d.hl.OutlineTransparency = math.clamp(baseTransp + 0.1, 0, 0.9)
+						end
+					end
+					if d.ring then
+						local vis = (apart and 1 or 0) * d.vis
+						d.ringVis = (d.ringVis or 0) + (vis - (d.ringVis or 0)) * smooth
+						if pastCf and d.ringVis > 0.02 then
+							rayParams.FilterDescendantsInstances = { folder, char }
+							local hit = workspace:Raycast(pastCf.Position, Vector3.new(0, -8, 0), rayParams)
+							local y = hit and hit.Position.Y + 0.05 or pastCf.Position.Y - 3
+							local base = CFrame.new(pastCf.Position.X, y, pastCf.Position.Z) * CFrame.Angles(0, 0, math.rad(90))
+							local pulse = 0.5 + 0.5 * math.sin(now * 4)
+							local col = ghostColor(d, 1, now)
+							local s = 3.2 + pulse * 0.6
+							d.ring.Size = Vector3.new(0.05, s, s)
+							d.ring.CFrame = base
+							d.ring.Color = col
+							d.ring.Transparency = 1 - (1 - (0.55 + pulse * 0.25)) * d.ringVis
+							d.disc.CFrame = base * CFrame.new(0.02, 0, 0)
+							d.disc.Color = col
+							d.disc.Transparency = 1 - (1 - baseTransp * 0.5) * d.ringVis
+						elseif d.ring.Transparency < 1 then
+							d.ring.Transparency, d.disc.Transparency = 1, 1
+							d.ring.CFrame, d.disc.CFrame = farCf, farCf
+						end
+					end
+				end
+				for p in pairs(data) do
+					if not p.Parent then
+						removeRecord(p)
+					end
+				end
+			end)
+
+			local function setter(k)
+				return function(v)
+					backtrack[k] = v
+				end
+			end
+
+			local sec = addSection(visualsTab, "BackTrack", "BackTrack")
+			sec:Toggle("Enable", "ghosts of past positions", function(on)
+				backtrack.on = on
+				if not on then
+					clearAll()
+				end
+				notify("BackTrack: " .. (on and "On" or "Off"), on and "showing past positions" or "ghosts removed")
+			end)
+			sec:Segmented("Target", { "Self", "Others", "All" }, backtrack.target, setter("target"))
+			sec:Segmented("Style", { "Ghost", "Trail", "Dots" }, backtrack.style, setter("style"))
+			local colorSelect = sec:Select("Color", "Role = murderer red, sheriff blue", { "Shimmer", "Rainbow", "Aqua", "Sunset", "White", "Role", "Custom" }, backtrack.color, setter("color"))
+			sec:ColorPicker("Custom color", "pick a color - Color switches to Custom", backtrack.custom, function(c)
+				backtrack.custom = c
+				if not loading and colorSelect.Get() ~= "Custom" then
+					colorSelect.Set("Custom")
+				end
+			end)
+			sec:Select("Material", "for Ghost and Dots", { "ForceField", "Neon", "Glass" }, backtrack.material, setter("material"))
+			local fx = addSection(visualsTab, "Effects", "BackTrack")
+			local outlineToggle = fx:Toggle("Outline", "glowing edge around the ghosts", setter("outline"))
+			local markerToggle = fx:Toggle("Marker", "pulsing disc at the oldest position", setter("marker"))
+			outlineToggle.Set(true, true)
+			markerToggle.Set(true, true)
+			local tuning = addSection(visualsTab, "Tuning", "BackTrack"):Collapsible(true)
+			tuning:Slider("Delay", 100, 1000, backtrack.delay, setter("delay"), function(v)
+				return v .. "ms"
+			end)
+			tuning:Slider("Ghosts", 1, 8, backtrack.count, setter("count"))
+			tuning:Slider("Opacity", 10, 100, backtrack.opacity, setter("opacity"), function(v)
+				return v .. "%"
+			end)
+			tuning:Slider("Max distance", 25, 500, backtrack.dist, setter("dist"), function(v)
+				return v .. "m"
+			end)
+
+			stopBackTrack = function()
+				backtrack.on = false
+				clearAll()
+			end
+		end
+		do
+			local cm = {
+				on = false,
+				target = "Self",
+				model = "Toy",
+				turn = 0,
+				fur = Color3.fromRGB(250, 248, 245),
+				bow = Color3.fromRGB(255, 92, 138),
+			}
+			local modelIds = { Toy = 6132351260, Sugar = 13856439988, Real = 110128375015584 }
+			local cache, loading2 = {}, {}
+			local records = {}
+
+			local function modelFor(p)
+				if p == player then
+					return cm.on and cm.model or nil
+				end
+				if cm.on and cm.target == "All" then
+					return cm.model
+				end
+				return nil
+			end
+
+			local function clear(p)
+				local d = records[p]
+				if not d then
+					return
+				end
+				if d.folder then
+					d.folder:Destroy()
+				end
+				if d.char and d.char.Parent then
+					for _, x in ipairs(d.char:GetDescendants()) do
+						if (x:IsA("BasePart") or x:IsA("Decal")) and not x:FindFirstAncestorOfClass("Tool") then
+							x.LocalTransparencyModifier = 0
+						end
+					end
+				end
+				records[p] = nil
+			end
+
+			local function loadModel(name)
+				if cache[name] ~= nil then
+					return cache[name] or nil
+				end
+				if loading2[name] then
+					return nil
+				end
+				loading2[name] = true
+				task.spawn(function()
+					local ok, objs = pcall(function()
+						return game:GetObjects("rbxassetid://" .. modelIds[name])
+					end)
+					local root = ok and objs and objs[1]
+					if root and not root:IsA("Model") then
+						local m = Instance.new("Model")
+						for _, o in ipairs(objs) do
+							o.Parent = m
+						end
+						root = m
+					end
+					if root then
+						for _, x in ipairs(root:GetDescendants()) do
+							if x:IsA("LuaSourceContainer") or x:IsA("Sound") or x:IsA("ClickDetector") or x:IsA("ProximityPrompt") or x:IsA("Humanoid") or x:IsA("JointInstance") or x:IsA("WeldConstraint") or x:IsA("BillboardGui") then
+								x:Destroy()
+							end
+						end
+						if not root:FindFirstChildWhichIsA("BasePart", true) then
+							root = nil
+						end
+					end
+					cache[name] = root or false
+					loading2[name] = nil
+					if not root then
+						notify("Custom Models", name .. " failed to load")
+					end
+				end)
+				return nil
+			end
+
+			local function applyModel(p, char, template)
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if not hrp or not hum then
+					return
+				end
+				local d = { char = char, parts = {}, ears = {}, seed = math.random() * 10, kind = "asset" }
+				d.folder = create("Folder", { Name = "RockHubCustomModel", Parent = char })
+				local m = template:Clone()
+				local parts = {}
+				for _, x in ipairs(m:GetDescendants()) do
+					if x:IsA("BasePart") then
+						x.Name = "RockHubBunny"
+						x.Anchored = false
+						x.CanCollide = false
+						x.CanQuery = false
+						x.CanTouch = false
+						x.Massless = true
+						table.insert(parts, x)
+					end
+				end
+				local _, size = m:GetBoundingBox()
+				local height = hum.HipHeight + hrp.Size.Y / 2 + 2.6
+				pcall(function()
+					m:ScaleTo(m:GetScale() * height / math.max(size.Y, 0.1))
+				end)
+				local bbCf, bbSize = m:GetBoundingBox()
+				m.WorldPivot = CFrame.new(bbCf.Position) * (m.WorldPivot - m.WorldPivot.Position)
+				local legHeight = hum.HipHeight + hrp.Size.Y / 2
+				local base = CFrame.new(0, -legHeight + bbSize.Y / 2, 0) * CFrame.Angles(0, math.rad(cm.turn), 0)
+				m:PivotTo(hrp.CFrame * base)
+				table.sort(parts, function(a, b)
+					return a.Size.Magnitude > b.Size.Magnitude
+				end)
+				local main2 = parts[1]
+				for i = 2, #parts do
+					local wc = Instance.new("WeldConstraint")
+					local wcObj = wc
+					local wcProps = {}
+					wcProps[23771] = {
+						"Part0",
+						function()
+							return main2
+						end,
+					}
+					wcProps[20038] = {
+						"Parent",
+						function()
+							return parts[i]
+						end,
+					}
+					wcProps[1541] = {
+						"Part1",
+						function()
+							return parts[i]
+						end,
+					}
+					local wcOrder = { 23771, 1541, 20038 }
+					for wcIdx = 1, #wcOrder do
+						local wcProp = wcProps[wcOrder[wcIdx]]
+						wcObj[wcProp[1]] = wcProp[2]()
+					end
+				end
+				local w = Instance.new("Weld")
+				do
+					local hopObj = w
+					local hopProps = {}
+					hopProps[57596] = {
+						"Part0",
+						function()
+							return hrp
+						end,
+					}
+					hopProps[41635] = {
+						"C0",
+						function()
+							return (hrp.CFrame:ToObjectSpace(main2.CFrame))
+						end,
+					}
+					hopProps[47751] = {
+						"Part1",
+						function()
+							return main2
+						end,
+					}
+					hopProps[60997] = {
+						"Parent",
+						function()
+							return main2
+						end,
+					}
+					local hopOrder = { 57596, 47751, 41635, 60997 }
+					for hopIdx = 1, #hopOrder do
+						local hopProp = hopProps[hopOrder[hopIdx]]
+						hopObj[hopProp[1]] = hopProp[2]()
+					end
+				end
+				d.hop, d.hopBase = w, w.C0
+				m.Parent = d.folder
+				records[p] = d
+				return d
+			end
+
+			local function clearAll()
+				for p in pairs(records) do
+					clear(p)
+				end
+			end
+
+			connect(RunService.Heartbeat, function()
+				if not cm.on and next(records) == nil then
+					return
+				end
+				local t = os.clock()
+				for _, p in ipairs(Players:GetPlayers()) do
+					local char = p.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					local d = records[p]
+					local name = modelFor(p)
+					if not name or not char or not hum or hum.Health <= 0 then
+						if d then
+							clear(p)
+						end
+					else
+						if not d or d.char ~= char or not d.folder.Parent or d.model ~= name or d.turn ~= cm.turn then
+							local template = loadModel(name)
+							if template then
+								clear(p)
+								d = applyModel(p, char, template)
+								if d then
+									d.model, d.turn = name, cm.turn
+								end
+							end
+						end
+						if d then
+							for _, x in ipairs(char:GetDescendants()) do
+								if (x:IsA("BasePart") or x:IsA("Decal")) and x.Name ~= "HumanoidRootPart" and not x:IsDescendantOf(d.folder) and not x:FindFirstAncestorOfClass("Tool") and x.LocalTransparencyModifier < 1 then
+									x.LocalTransparencyModifier = 1
+								end
+							end
+							local move = math.clamp(hum.MoveDirection.Magnitude, 0, 1)
+							for _, e in ipairs(d.ears) do
+								local sway = math.sin(t * 2.2 + d.seed + e.side) * 0.07
+								local flap = math.sin(t * 11 + d.seed) * 0.22 * move
+								e.weld.C0 = e.pivot * CFrame.Angles(0.12 * move + flap, 0, (-0.2 + sway) * e.side) * CFrame.new(0, 0.95, 0)
+							end
+							if d.tail then
+								local bob = math.abs(math.sin(t * (move > 0 and 11 or 3) + d.seed)) * (0.08 + 0.12 * move)
+								d.tail.C0 = d.tailBase * CFrame.new(0, bob, 0)
+							end
+							if d.hop then
+								local hop = move > 0 and math.abs(math.sin(t * 9 + d.seed)) * 0.9 * move or math.sin(t * 2 + d.seed) * 0.05
+								local tilt = move > 0 and -0.12 * move or 0
+								d.hop.C0 = CFrame.new(0, hop, 0) * d.hopBase * CFrame.Angles(tilt, 0, 0)
+							end
+						end
+					end
+				end
+				for p in pairs(records) do
+					if not p.Parent then
+						clear(p)
+					end
+				end
+			end)
+			local sec = addSection(visualsTab, "Custom Models", "Models")
+			sec:Toggle("Bunny", "turn into a cute bunny (ROCK dimas users see it too)", function(on)
+				cm.on = on
+				if not on then
+					clearAll()
+				end
+				notify("Bunny: " .. (on and "On" or "Off"), on and "hop hop" or "back to human")
+			end)
+			sec:Select("Model", "bunny model", { "Toy", "Sugar", "Real" }, cm.model, function(v)
+				cm.model = v
+			end)
+			sec:Segmented("Target", { "Self", "All" }, cm.target, function(v)
+				cm.target = v
+				clearAll()
+			end)
+			local savedTurn = config["Custom Models/turn"]
+			if type(savedTurn) == "number" then
+				cm.turn = savedTurn
+			end
+			sec:Button("Rotate model", "if it faces the wrong way", function()
+				cm.turn = (cm.turn + 90) % 360
+				setConfig("Custom Models/turn", cm.turn)
+			end)
+			register("Custom Models/turn", function(v)
+				if type(v) == "number" then
+					cm.turn = v % 360
+				end
+			end, function()
+				return cm.turn
+			end, 0)
+			stopBunnyModel = clearAll
+		end
+		do
+			local av = { headless = false, korblox = false }
+			local state = { char = nil, orig = nil, extra = {} }
+
+			local function removeKorblox()
+				local o = state.orig
+				if o and o.part and o.part.Parent then
+					pcall(function()
+						o.part.MeshId = o.mesh
+						o.part.TextureID = o.tex
+					end)
+				end
+				for _, x in ipairs(state.extra) do
+					x:Destroy()
+				end
+				table.clear(state.extra)
+				state.orig = nil
+				if state.char then
+					for _, n in ipairs({ "RightUpperLeg", "RightLowerLeg", "RightFoot" }) do
+						local pt = state.char:FindFirstChild(n)
+						if pt then
+							pt.LocalTransparencyModifier = 0
+						end
+					end
+				end
+				state.hide = nil
+			end
+
+			local function applyKorblox(char)
+				removeKorblox()
+				state.char = char
+				local upperLeg = char:FindFirstChild("RightUpperLeg")
+				if upperLeg then
+					state.hide = { "RightLowerLeg", "RightFoot" }
+					local o = { part = upperLeg, mesh = upperLeg.MeshId, tex = upperLeg.TextureID }
+					local ok = pcall(function()
+						upperLeg.MeshId = "rbxassetid://902942096"
+						upperLeg.TextureID = "rbxassetid://902843398"
+					end)
+					if ok then
+						state.orig = o
+					else
+						table.insert(state.hide, "RightUpperLeg")
+						local legPart = Instance.new("Part")
+						legPart.Name = "RockHubKorblox"
+						legPart.CanCollide, legPart.CanQuery, legPart.CanTouch, legPart.Massless = false, false, false, true
+						legPart.Size = upperLeg.Size
+						legPart.CFrame = upperLeg.CFrame
+						local m = Instance.new("SpecialMesh")
+						m.MeshType = Enum.MeshType.FileMesh
+						m.MeshId, m.TextureId = "rbxassetid://902942096", "rbxassetid://902843398"
+						m.Parent = legPart
+						local w = Instance.new("WeldConstraint")
+						w.Part0, w.Part1 = upperLeg, legPart
+						w.Parent = legPart
+						legPart.Parent = char
+						table.insert(state.extra, legPart)
+					end
+					return
+				end
+				local rightLeg = char:FindFirstChild("Right Leg")
+				if rightLeg then
+					for _, cm in ipairs(char:GetChildren()) do
+						if cm:IsA("CharacterMesh") and cm.BodyPart == Enum.BodyPart.RightLeg then
+							cm.Parent = nil
+							table.insert(state.extra, {
+								Destroy = function()
+									cm.Parent = char
+								end,
+							})
+						end
+					end
+					local m = Instance.new("SpecialMesh")
+					do
+						local meshObj = m
+						local meshProps = {}
+						meshProps[42163] = {
+							"MeshType",
+							function()
+								return Enum.MeshType.FileMesh
+							end,
+						}
+						meshProps[42155] = {
+							"Name",
+							function()
+								return "RockHubKorblox"
+							end,
+						}
+						local meshOrder = { 42155, 42163 }
+						for meshIdx = 1, #meshOrder do
+							local meshProp = meshProps[meshOrder[meshIdx]]
+							meshObj[meshProp[1]] = meshProp[2]()
+						end
+					end
+					m.MeshId, m.TextureId = "rbxassetid://101851696", "rbxassetid://101851254"
+					m.Parent = rightLeg
+					table.insert(state.extra, m)
+				end
+			end
+
+			local function setHeadless(char, hidden)
+				local head = char and char:FindFirstChild("Head")
+				if not head then
+					return
+				end
+				head.LocalTransparencyModifier = hidden and 1 or 0
+				for _, d in ipairs(head:GetChildren()) do
+					if d:IsA("Decal") then
+						d.LocalTransparencyModifier = hidden and 1 or 0
+					end
+				end
+			end
+
+			local function hasKorblox(char)
+				if state.char ~= char then
+					return false
+				end
+				local upperLeg = char:FindFirstChild("RightUpperLeg")
+				if upperLeg then
+					if state.orig then
+						return state.orig.part == upperLeg and upperLeg.MeshId == "rbxassetid://902942096"
+					end
+					for _, x in ipairs(state.extra) do
+						if typeof(x) == "Instance" and x.Name == "RockHubKorblox" and x.Parent == char then
+							local w = x:FindFirstChildOfClass("WeldConstraint")
+							return w ~= nil and w.Part0 == upperLeg
+						end
+					end
+					return false
+				end
+				local rightLeg = char:FindFirstChild("Right Leg")
+				return rightLeg ~= nil and rightLeg:FindFirstChild("RockHubKorblox") ~= nil
+			end
+
+			local lastChar
+			local nextCheck = 0
+			connect(RunService.RenderStepped, function()
+				local char = player.Character
+				if not char then
+					return
+				end
+				if av.headless then
+					setHeadless(char, true)
+				end
+				if av.korblox then
+					local now = os.clock()
+					if lastChar ~= char or now >= nextCheck and not hasKorblox(char) then
+						lastChar = char
+						nextCheck = now + 0.3
+						applyKorblox(char)
+					elseif now >= nextCheck then
+						nextCheck = now + 0.3
+					end
+					for _, n in ipairs(state.hide or {}) do
+						local pt = char:FindFirstChild(n)
+						if pt then
+							pt.LocalTransparencyModifier = 1
+						end
+					end
+				end
+			end)
+			local sec = addSection(visualsTab, "Avatar", "Models")
+			sec:Toggle("Headless", "no head (only you see it)", function(on)
+				av.headless = on
+				if not on then
+					setHeadless(player.Character, false)
+				end
+			end)
+			sec:Toggle("Korblox", "Korblox Deathspeaker leg (only you see it)", function(on)
+				av.korblox = on
+				lastChar = nil
+				if not on then
+					removeKorblox()
+				end
+			end)
+
+			stopAvatar = function()
+				av.headless, av.korblox = false, false
+				setHeadless(player.Character, false)
+				removeKorblox()
+			end
+		end
+		do
+			local aura = {
+				on = false,
+				style = "Energy",
+				custom = Color3.fromRGB(105, 205, 255),
+				intensity = 55,
+				size = 100,
+			}
+			local auraRoot
+			local auraObjects = {}
+			local emitters = {}
+			local auraLight
+			local auraHighlight
+			local rainbowAt = 0
+
+			local function track(inst)
+				table.insert(auraObjects, inst)
+				return inst
+			end
+
+			local function clear()
+				for _, inst in ipairs(auraObjects) do
+					if inst.Parent then
+						inst:Destroy()
+					end
+				end
+				table.clear(auraObjects)
+				table.clear(emitters)
+				auraRoot, auraLight, auraHighlight = nil, nil, nil
+			end
+
+			local function styleColor()
+				if aura.style == "Flame" then
+					return Color3.fromRGB(255, 92, 34)
+				elseif aura.style == "Frost" then
+					return Color3.fromRGB(125, 225, 255)
+				elseif aura.style == "Void" then
+					return Color3.fromRGB(145, 65, 255)
+				elseif aura.style == "Rainbow" then
+					return Color3.fromHSV(os.clock() * 0.15 % 1, 0.85, 1)
+				elseif aura.style == "Custom" then
+					return aura.custom
+				end
+				return Color3.fromRGB(105, 205, 255)
+			end
+
+			local function addEmitter(parent, secondary)
+				local scale = aura.size / 100
+				local rate = aura.intensity * (secondary and 0.18 or 0.42)
+				local texture = "rbxasset://textures/particles/sparkles_main.dds"
+				local speed = NumberRange.new(0.45, 1.5)
+				local acceleration = Vector3.new(0, 1.2, 0)
+				local lifetime = NumberRange.new(0.65, 1.25)
+				local size
+				if aura.style == "Flame" and not secondary then
+					texture = "rbxasset://textures/particles/fire_main.dds"
+					speed = NumberRange.new(1.2, 2.8)
+					acceleration = Vector3.new(0, 3.5, 0)
+					size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0.7 * scale),
+						NumberSequenceKeypoint.new(0.55, 1.5 * scale),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+				elseif aura.style == "Void" and not secondary then
+					texture = "rbxasset://textures/particles/smoke_main.dds"
+					speed = NumberRange.new(0.2, 0.8)
+					acceleration = Vector3.new(0, 1.8, 0)
+					lifetime = NumberRange.new(1, 1.8)
+					size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 1.1 * scale),
+						NumberSequenceKeypoint.new(0.65, 2.1 * scale),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+				elseif aura.style == "Frost" and not secondary then
+					texture = "rbxasset://textures/particles/smoke_main.dds"
+					speed = NumberRange.new(0.15, 0.65)
+					acceleration = Vector3.new(0, -0.7, 0)
+					lifetime = NumberRange.new(0.9, 1.6)
+					size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0.65 * scale),
+						NumberSequenceKeypoint.new(0.7, 1.35 * scale),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+				else
+					size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, (secondary and 0.22 or 0.42) * scale),
+						NumberSequenceKeypoint.new(0.5, (secondary and 0.13 or 0.7) * scale),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+				end
+				local color = styleColor()
+				local emitter = track(create("ParticleEmitter", {
+					Name = secondary and "RockHubAuraSparks" or "RockHubAuraCore",
+					Texture = texture,
+					Rate = rate,
+					Lifetime = lifetime,
+					Speed = speed,
+					Acceleration = acceleration,
+					SpreadAngle = Vector2.new(180, 180),
+					Rotation = NumberRange.new(0, 360),
+					RotSpeed = NumberRange.new(-100, 100),
+					LightEmission = aura.style == "Void" and 0.15 or 0.85,
+					LightInfluence = 0,
+					Size = size,
+					Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, secondary and 0.05 or 0.2),
+						NumberSequenceKeypoint.new(0.75, 0.45),
+						NumberSequenceKeypoint.new(1, 1),
+					}),
+					Color = ColorSequence.new(color),
+					Parent = parent,
+				}))
+				table.insert(emitters, emitter)
+			end
+
+			local function build()
+				clear()
+				if not aura.on then
+					return
+				end
+				local char = player.Character
+				local root = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not root or not hum or hum.Health <= 0 then
+					return
+				end
+				auraRoot = root
+				local bottom = track(create("Attachment", { Name = "RockHubAuraBottom", Position = Vector3.new(0, -1.5, 0), Parent = root }))
+				local center = track(create("Attachment", { Name = "RockHubAuraCenter", Position = Vector3.new(0, 0.45, 0), Parent = root }))
+				addEmitter(bottom, false)
+				addEmitter(center, true)
+				local color = styleColor()
+				auraLight = track(create("PointLight", {
+					Name = "RockHubAuraLight",
+					Color = color,
+					Brightness = 0.8 + aura.intensity / 45,
+					Range = 7 + aura.size / 30,
+					Shadows = false,
+					Parent = root,
+				}))
+				auraHighlight = track(create("Highlight", {
+					Name = "RockHubAuraHighlight",
+					Adornee = char,
+					DepthMode = Enum.HighlightDepthMode.Occluded,
+					FillColor = color,
+					FillTransparency = 0.92,
+					OutlineColor = color,
+					OutlineTransparency = 0.35,
+					Parent = char,
+				}))
+			end
+
+			connect(player.CharacterAdded, function()
+				if aura.on then
+					task.delay(0.4, build)
+				end
+			end)
+			connect(RunService.Heartbeat, function()
+				if not aura.on then
+					return
+				end
+				local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if not root then
+					if auraRoot then
+						clear()
+					end
+					return
+				end
+				if auraRoot ~= root or not auraRoot.Parent then
+					build()
+					return
+				end
+				local now = os.clock()
+				if aura.style ~= "Rainbow" or now - rainbowAt < 0.06 then
+					return
+				end
+				rainbowAt = now
+				local hue = now * 0.16 % 1
+				local c1 = Color3.fromHSV(hue, 0.9, 1)
+				local c2 = Color3.fromHSV((hue + 0.16) % 1, 0.9, 1)
+				local sequence = ColorSequence.new(c1, c2)
+				for _, emitter in ipairs(emitters) do
+					emitter.Color = sequence
+				end
+				auraLight.Color = c1
+				auraHighlight.FillColor = c1
+				auraHighlight.OutlineColor = c2
+			end)
+
+			local sec = addSection(visualsTab, "Auras", "Models")
+			sec:Toggle("Aura", "particles and glow around your character", function(on)
+				aura.on = on
+				build()
+				notify("Aura: " .. (on and "On" or "Off"), on and aura.style or "effect removed")
+			end)
+			sec:Select("Style", "right click - previous", { "Energy", "Flame", "Frost", "Void", "Rainbow", "Custom" }, aura.style, function(v)
+				aura.style = v
+				if aura.on then
+					build()
+				end
+			end)
+			sec:ColorPicker("Aura color", "used when Style = Custom", aura.custom, function(c)
+				aura.custom = c
+				if not loading then
+					aura.style = "Custom"
+				end
+				if aura.on then
+					build()
+				end
+			end)
+			sec:Slider("Intensity", 10, 100, aura.intensity, function(v)
+				aura.intensity = v
+				if aura.on then
+					build()
+				end
+			end, function(v)
+				return v .. "%"
+			end)
+			sec:Slider("Size", 50, 200, aura.size, function(v)
+				aura.size = v
+				if aura.on then
+					build()
+				end
+			end, function(v)
+				return v .. "%"
+			end)
+
+			stopAura = function()
+				aura.on = false
+				clear()
+			end
+		end
+		do
+			local ob = {
+				on = false,
+				style = "Invoker",
+				count = 3,
+				speed = 100,
+				radius = 100,
+				custom = Color3.fromRGB(120, 200, 255),
+			}
+			local invokerColors = { Color3.fromRGB(90, 200, 255), Color3.fromRGB(190, 90, 255), Color3.fromRGB(255, 150, 50) }
+			local folder
+			local orbs = {}
+
+			local function orbColor(i, t)
+				if ob.style == "Invoker" then
+					return invokerColors[(i - 1) % #invokerColors + 1]
+				elseif ob.style == "Mono" then
+					local v = 0.5 + 0.5 * math.sin(t * 2.5 + i * 1.3)
+					local c = math.floor(120 + v * 135)
+					return Color3.fromRGB(c, c, c)
+				end
+				return ob.custom
+			end
+
+			local function part(size, mat, color, transp, shape)
+				local p = Instance.new("Part")
+				do
+					local partObj = p
+					local partProps = {}
+					partProps[60693] = {
+						"Color",
+						function()
+							return color
+						end,
+					}
+					partProps[30322] = {
+						"Size",
+						function()
+							return size
+						end,
+					}
+					partProps[52597] = {
+						"Transparency",
+						function()
+							return transp or 0
+						end,
+					}
+					partProps[25263] = {
+						"Material",
+						function()
+							return mat
+						end,
+					}
+					partProps[29939] = {
+						"Shape",
+						function()
+							return shape or Enum.PartType.Ball
+						end,
+					}
+					local partOrder = { 29939, 30322, 25263, 60693, 52597 }
+					for partIdx = 1, #partOrder do
+						local partProp = partProps[partOrder[partIdx]]
+						partObj[partProp[1]] = partProp[2]()
+					end
+				end
+				p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+				p.Parent = folder
+				return p
+			end
+
+			local function clear()
+				if folder then
+					folder:Destroy()
+				end
+				folder = nil
+				table.clear(orbs)
+			end
+
+			local function build()
+				clear()
+				folder = create("Folder", { Name = "RockHubOrbs", Parent = workspace.CurrentCamera })
+				for i = 1, ob.count do
+					local c = orbColor(i, 0)
+					local basePart = part(Vector3.one * 0.62, Enum.Material.Neon, c, 0.35)
+					local heart = part(Vector3.one * 0.3, Enum.Material.SmoothPlastic, Color3.new(1, 1, 1), 0.2)
+					local halo = part(Vector3.one * 1.15, Enum.Material.ForceField, c, 0.55)
+					local light = { Color = c }
+					local a0 = create("Attachment", { Position = Vector3.new(0, 0.22, 0), Parent = basePart })
+					local a1 = create("Attachment", { Position = Vector3.new(0, -0.22, 0), Parent = basePart })
+					local trail = create("Trail", {
+						Attachment0 = a0,
+						Attachment1 = a1,
+						Lifetime = 0.35,
+						LightEmission = 0.3,
+						LightInfluence = 0.5,
+						FaceCamera = true,
+						MinLength = 0.02,
+						Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 1) }),
+						WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }),
+						Color = ColorSequence.new(c),
+						Parent = basePart,
+					})
+					local sparks = create("ParticleEmitter", {
+						Texture = "rbxasset://textures/particles/sparkles_main.dds",
+						Rate = 5,
+						Lifetime = NumberRange.new(0.4, 0.8),
+						Speed = NumberRange.new(0.3, 1),
+						SpreadAngle = Vector2.new(180, 180),
+						LightEmission = 0.3,
+						LightInfluence = 0.5,
+						Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.18), NumberSequenceKeypoint.new(1, 0) }),
+						Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) }),
+						Color = ColorSequence.new(c),
+						Parent = basePart,
+					})
+					orbs[i] = {
+						core = basePart,
+						heart = heart,
+						halo = halo,
+						light = light,
+						trail = trail,
+						sparks = sparks,
+						pos = nil,
+						color = c,
+					}
+				end
+			end
+
+			local gradStart2 = os.clock()
+			connect(RunService.RenderStepped, function(dt)
+				if not ob.on then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not hrp then
+					if folder then
+						clear()
+					end
+					return
+				end
+				if not folder or not folder.Parent or #orbs ~= ob.count then
+					build()
+				end
+				local t = os.clock() - gradStart2
+				local spd = 1.6 * ob.speed / 100
+				local r = 1.35 * ob.radius / 100
+				local center = hrp.CFrame * CFrame.new(0, 1.7, 1.25) * CFrame.Angles(math.rad(-25), 0, 0)
+				local k = 1 - math.exp(-dt * 10)
+				for i, o in ipairs(orbs) do
+					local a = t * spd + (i - 1) * (math.pi * 2 / #orbs)
+					local bob = math.sin(t * 2.2 + i * 1.7) * 0.18
+					local target = (center * CFrame.new(math.cos(a) * r, bob, math.sin(a) * r * 0.55)).Position
+					o.pos = o.pos and o.pos:Lerp(target, k) or target
+					local pulse = 1 + math.sin(t * 4 + i) * 0.06
+					local cf = CFrame.new(o.pos)
+					o.core.CFrame = cf
+					o.heart.CFrame = cf
+					o.halo.CFrame = cf
+					o.core.Size = Vector3.one * 0.62 * pulse
+					o.halo.Size = Vector3.one * 1.15 * (2 - pulse)
+					local c = orbColor(i, t)
+					if c ~= o.color then
+						o.color = c
+						o.core.Color, o.halo.Color, o.light.Color = c, c, c
+						o.trail.Color = ColorSequence.new(c)
+						o.sparks.Color = ColorSequence.new(c)
+					end
+				end
+			end)
+			local sec = addSection(visualsTab, "Orbs", "Models")
+			sec:Toggle("Orbs", "glowing orbs behind your back (only you see them)", function(on)
+				ob.on = on
+				if not on then
+					clear()
+				end
+				notify("Orbs: " .. (on and "On" or "Off"), on and "quas wex exort" or "orbs gone")
+			end)
+			sec:Segmented("Style", { "Invoker", "Mono", "Custom" }, ob.style, function(v)
+				ob.style = v
+			end)
+			sec:ColorPicker("Orb color", "used when Style = Custom", ob.custom, function(c)
+				ob.custom = c
+				if not loading then
+					ob.style = "Custom"
+				end
+			end)
+			sec:Slider("Count", 1, 6, ob.count, function(v)
+				ob.count = v
+			end)
+			sec:Slider("Speed", 20, 300, ob.speed, function(v)
+				ob.speed = v
+			end, function(v)
+				return v .. "%"
+			end)
+			sec:Slider("Radius", 50, 250, ob.radius, function(v)
+				ob.radius = v
+			end, function(v)
+				return v .. "%"
+			end)
+
+			stopOrbs = function()
+				ob.on = false
+				clear()
+			end
+		end
+		do
+			local swatch = { on = false, count = 30, speed = 100 }
+			local dirs = {
+				Vector3.new(1, 0, 0),
+				Vector3.new(-1, 0, 0),
+				Vector3.new(0, 0, 1),
+				Vector3.new(0, 0, -1),
+				Vector3.new(0, 1, 0),
+				Vector3.new(0, -1, 0),
+			}
+			local accentColor2 = Color3.new(1, 1, 1)
+			local tint = Color3.fromRGB(170, 215, 255)
+			local folder
+			local worms = {}
+			local rng = Random.new()
+
+			local function clear()
+				if folder then
+					folder:Destroy()
+				end
+				folder = nil
+				table.clear(worms)
+			end
+
+			local function newWorm()
+				local head = Instance.new("Part")
+				do
+					local headObj = head
+					local headProps = {}
+					headProps[61142] = {
+						"Size",
+						function()
+							return Vector3.one * 0.22
+						end,
+					}
+					headProps[18088] = {
+						"Material",
+						function()
+							return Enum.Material.Neon
+						end,
+					}
+					headProps[17496] = {
+						"Color",
+						function()
+							return accentColor2
+						end,
+					}
+					headProps[56633] = {
+						"Shape",
+						function()
+							return Enum.PartType.Ball
+						end,
+					}
+					local headOrder = { 56633, 61142, 18088, 17496 }
+					for headIdx = 1, #headOrder do
+						local headProp = headProps[headOrder[headIdx]]
+						headObj[headProp[1]] = headProp[2]()
+					end
+				end
+				head.Anchored, head.CanCollide, head.CanQuery, head.CanTouch, head.CastShadow = true, false, false, false, false
+				head.Parent = folder
+				local a0 = create("Attachment", { Position = Vector3.new(0, 0.06, 0), Parent = head })
+				local a1 = create("Attachment", { Position = Vector3.new(0, -0.06, 0), Parent = head })
+				create("Trail", {
+					Attachment0 = a0,
+					Attachment1 = a1,
+					Lifetime = rng:NextNumber(0.35, 0.7),
+					LightEmission = 1,
+					LightInfluence = 0,
+					FaceCamera = true,
+					MinLength = 0.05,
+					Color = ColorSequence.new(accentColor2, tint),
+					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }),
+					WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.2) }),
+					Parent = head,
+				})
+				return { head = head, pos = nil, dir = dirs[1], left = 0, spd = rng:NextNumber(22, 42) }
+			end
+
+			local function build()
+				clear()
+				folder = create("Folder", { Name = "RockHubSkyWorms", Parent = workspace.CurrentCamera })
+				for i = 1, swatch.count do
+					worms[i] = newWorm()
+				end
+			end
+
+			local function turn(w, center, floorY)
+				local offset = w.pos - center
+				local options = {}
+				for _, d in ipairs(dirs) do
+					if d:Dot(w.dir) == 0 then
+						local ok = true
+						if d.X ~= 0 and math.abs(offset.X) > 96 and d.X * offset.X > 0 then
+							ok = false
+						end
+						if d.Z ~= 0 and math.abs(offset.Z) > 96 and d.Z * offset.Z > 0 then
+							ok = false
+						end
+						if d.Y > 0 and w.pos.Y > floorY + 40 then
+							ok = false
+						end
+						if d.Y < 0 and w.pos.Y < floorY + 2 then
+							ok = false
+						end
+						if ok then
+							table.insert(options, d)
+							if d.Y == 0 then
+								table.insert(options, d)
+							end
+						end
+					end
+				end
+				w.dir = #options > 0 and options[rng:NextInteger(1, #options)] or -w.dir
+				w.left = rng:NextNumber(4, 22)
+			end
+
+			local function respawn(w, center, floorY)
+				w.pos = center + Vector3.new(rng:NextNumber(-120, 120), 0, rng:NextNumber(-120, 120))
+				w.pos = Vector3.new(w.pos.X, floorY + rng:NextNumber(2, 40), w.pos.Z)
+				w.dir = dirs[rng:NextInteger(1, 4)]
+				w.left = rng:NextNumber(4, 22)
+				for _, d in ipairs(w.head:GetChildren()) do
+					if d:IsA("Trail") then
+						d:Clear()
+					end
+				end
+			end
+
+			connect(RunService.RenderStepped, function(dt)
+				if not swatch.on then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not hrp then
+					return
+				end
+				if not folder or not folder.Parent or #worms ~= swatch.count then
+					build()
+				end
+				local center = hrp.Position
+				local floorY = center.Y - 3
+				dt = math.min(dt, 0.1)
+				for _, w in ipairs(worms) do
+					if not w.pos or (w.pos - center).Magnitude > 216 then
+						respawn(w, center, floorY)
+					end
+					local step = w.spd * swatch.speed / 100 * dt
+					while step > 0 do
+						local s = math.min(step, w.left)
+						w.pos += w.dir * s
+						w.left -= s
+						step -= s
+						if w.left <= 0 then
+							turn(w, center, floorY)
+						end
+					end
+					w.head.CFrame = CFrame.new(w.pos)
+				end
+			end)
+			local sec = addSection(visualsTab, "Sky Worms", "Models")
+			sec:Toggle("Sky Worms", "ROCK dimas exclusive - white signals run across the map (only you see them)", function(on)
+				swatch.on = on
+				if not on then
+					clear()
+				end
+				notify("Sky Worms: " .. (on and "On" or "Off"), on and "the map is online" or "signal lost")
+			end)
+			sec:Slider("Count", 10, 60, swatch.count, function(v)
+				swatch.count = v
+			end)
+			sec:Slider("Speed", 20, 300, swatch.speed, function(v)
+				swatch.speed = v
+			end, function(v)
+				return v .. "%"
+			end)
+
+			stopSkyWorms = function()
+				swatch.on = false
+				clear()
+			end
+		end
+		
+		do
+			local gunSkin = { on = false, model = "Green", size = 100, turn = 0 }
+			local modelIds = { Green = 17437147124, Black = 9341070001, Classic = 13324755498 }
+			local cache, loading2 = {}, {}
+			local cur
+
+			local function loadModel(name)
+				if cache[name] ~= nil then
+					return cache[name] or nil
+				end
+				if loading2[name] then
+					return nil
+				end
+				loading2[name] = true
+				task.spawn(function()
+					local ok, objs = pcall(function()
+						return game:GetObjects("rbxassetid://" .. modelIds[name])
+					end)
+					local root = ok and objs and objs[1]
+					if root and not root:IsA("Model") then
+						local m = Instance.new("Model")
+						for _, o in ipairs(objs) do
+							o.Parent = m
+						end
+						root = m
+					end
+					if root then
+						for _, x in ipairs(root:GetDescendants()) do
+							if x:IsA("BackpackItem") then
+								local m = Instance.new("Model")
+								m.Name = x.Name
+								for _, c in ipairs(x:GetChildren()) do
+									c.Parent = m
+								end
+								m.Parent = x.Parent
+								x:Destroy()
+							end
+						end
+						for _, x in ipairs(root:GetDescendants()) do
+							if x:IsA("LuaSourceContainer") or x:IsA("Sound") or x:IsA("JointInstance") or x:IsA("WeldConstraint") or x:IsA("ClickDetector") or x:IsA("ProximityPrompt") or x:IsA("Humanoid") then
+								x:Destroy()
+							end
+						end
+						if not root:FindFirstChildWhichIsA("BasePart", true) then
+							root = nil
+						end
+					end
+					cache[name] = root or false
+					loading2[name] = nil
+					if not root then
+						notify("Gun Skin", name .. " failed to load")
+					end
+				end)
+				return nil
+			end
+
+			local function clear()
+				if cur then
+					if cur.model then
+						cur.model:Destroy()
+					end
+					for p in pairs(cur.hidden) do
+						if p.Parent then
+							p.LocalTransparencyModifier = 0
+						end
+					end
+				end
+				cur = nil
+			end
+
+			local axes = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+			local function majorAxes(size)
+				local list = { { 1, size.X }, { 2, size.Y }, { 3, size.Z } }
+				table.sort(list, function(a, b)
+					return a[2] > b[2]
+				end)
+				return axes[list[1][1]], axes[list[2][1]], list[1][2]
+			end
+
+			local function frame(pos, look, up)
+				local right = look:Cross(up).Unit
+				up = right:Cross(look).Unit
+				return CFrame.fromMatrix(pos, right, up, -look)
+			end
+
+			local function build(tool, handle, template)
+				clear()
+				local m = template:Clone()
+				local parts = {}
+				for _, x in ipairs(m:GetDescendants()) do
+					if x:IsA("BasePart") then
+						x.Anchored, x.CanCollide, x.CanQuery, x.CanTouch, x.Massless, x.CastShadow = true, false, false, false, true, false
+						table.insert(parts, x)
+					end
+				end
+				local _, size = m:GetBoundingBox()
+				local _, _, len = majorAxes(size)
+				pcall(function()
+					m:ScaleTo(m:GetScale() * (4.5 * gunSkin.size / 100) / math.max(len, 0.1))
+				end)
+				local bbCf, bbSize = m:GetBoundingBox()
+				local modelLong, modelMid = majorAxes(bbSize)
+				m.WorldPivot = frame(bbCf.Position, bbCf:VectorToWorldSpace(modelLong), bbCf:VectorToWorldSpace(modelMid))
+				local handleLong, handleMid = majorAxes(handle.Size)
+				local lookSign = gunSkin.turn % 2 == 1 and -1 or 1
+				local upSign = gunSkin.turn >= 2 and -1 or 1
+				local look = handle.CFrame:VectorToWorldSpace(handleLong) * lookSign
+				local up = handle.CFrame:VectorToWorldSpace(handleMid) * upSign
+				local _, _, modelLen = majorAxes(bbSize)
+				m:PivotTo(frame(handle.Position + look * modelLen * 0.25, look, up))
+				local offsets = {}
+				for _, pt in ipairs(parts) do
+					offsets[pt] = handle.CFrame:ToObjectSpace(pt.CFrame)
+				end
+				m.Name = "RockHubGunSkin"
+				m.Parent = workspace.CurrentCamera
+				cur = {
+					tool = tool,
+					handle = handle,
+					model = m,
+					offsets = offsets,
+					hidden = {},
+					key = gunSkin.model .. gunSkin.size .. gunSkin.turn,
+				}
+			end
+
+			connect(RunService.RenderStepped, function()
+				if not gunSkin.on then
+					return
+				end
+				local char = player.Character
+				local tool = char and char:FindFirstChild("Gun")
+				local handle = tool and tool:FindFirstChild("Handle")
+				if not handle then
+					if cur then
+						clear()
+					end
+					return
+				end
+				local key = gunSkin.model .. gunSkin.size .. gunSkin.turn
+				if not cur or cur.tool ~= tool or cur.key ~= key or not cur.model.Parent then
+					local template = loadModel(gunSkin.model)
+					if not template then
+						return
+					end
+					build(tool, handle, template)
+				end
+				local handleCf = handle.CFrame
+				for pt, offset in pairs(cur.offsets) do
+					pt.CFrame = handleCf * offset
+				end
+				for _, x in ipairs(tool:GetDescendants()) do
+					if x:IsA("BasePart") and x.LocalTransparencyModifier < 1 then
+						x.LocalTransparencyModifier = 1
+						cur.hidden[x] = true
+					end
+				end
+			end)
+			local sec = addSection(visualsTab, "Gun Skin", "Models")
+			sec:Toggle("AWM", "sniper rifle instead of the sheriff gun (only you see it)", function(on)
+				gunSkin.on = on
+				if not on then
+					clear()
+				end
+				if on and not loading then
+					showAlert("Sheriff only", "This feature only works when you are the Sheriff and hold the gun.", "Done")
+				end
+				notify("AWM: " .. (on and "On" or "Off"), on and "take out the gun" or "normal gun")
+			end)
+			sec:Select("Model", "AWM look", { "Green", "Black", "Classic" }, gunSkin.model, function(v)
+				gunSkin.model = v
+			end)
+			sec:Slider("Size", 50, 200, gunSkin.size, function(v)
+				gunSkin.size = v
+			end, function(v)
+				return v .. "%"
+			end)
+			local savedTurn = config["Gun Skin/turn"]
+			if type(savedTurn) == "number" then
+				gunSkin.turn = savedTurn
+			end
+			sec:Button("Rotate", "if the barrel points the wrong way", function()
+				gunSkin.turn = (gunSkin.turn + 1) % 4
+				setConfig("Gun Skin/turn", gunSkin.turn)
+			end)
+			register("Gun Skin/turn", function(v)
+				if type(v) == "number" then
+					gunSkin.turn = v % 4
+				end
+			end, function()
+				return gunSkin.turn
+			end, 0)
+
+			stopAwm = function()
+				gunSkin.on = false
+				clear()
+			end
+		end
+		
+		do
+			local bhop = { on = false, mode = "Hold Space", max = 60, gain = 8 }
+			local hops = 0
+			local landedAt = 0
+			local lastJump = 0
+			local inAir = false
+			local baseFov
+
+			local function resetBhop()
+				hops = 0
+				local cam = workspace.CurrentCamera
+				if baseFov and cam then
+					tween(cam, 0.3, { FieldOfView = baseFov })
+				end
+			end
+
+			connect(RunService.Heartbeat, function()
+				if not bhop.on then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not hrp or not hum or hum.Health <= 0 then
+					return
+				end
+				local moving = hum.MoveDirection.Magnitude > 0.1
+				local want = bhop.mode == "Auto" and moving or bhop.mode == "Hold Space" and UserInputService:IsKeyDown(Enum.KeyCode.Space)
+				local grounded = hum.FloorMaterial ~= Enum.Material.Air
+				local now = os.clock()
+				if grounded then
+					if inAir then
+						landedAt = now
+					end
+					inAir = false
+					if want and moving then
+						if now - lastJump > 0.2 then
+							lastJump = now
+							hops += 1
+							hum:ChangeState(Enum.HumanoidStateType.Jumping)
+						end
+					elseif now - landedAt > 0.25 or not moving then
+						if hops > 0 then
+							resetBhop()
+						end
+					end
+				else
+					inAir = true
+					if moving and hops > 0 then
+						local speed = math.min(hum.WalkSpeed + hops * bhop.gain * 0.5, bhop.max)
+						local dir = hum.MoveDirection.Unit
+						local v = hrp.AssemblyLinearVelocity
+						hrp.AssemblyLinearVelocity = Vector3.new(dir.X * speed, v.Y, dir.Z * speed)
+						local cam = workspace.CurrentCamera
+						if cam then
+							baseFov = baseFov or cam.FieldOfView
+							local k = math.clamp((speed - hum.WalkSpeed) / math.max(bhop.max - hum.WalkSpeed, 1), 0, 1)
+							cam.FieldOfView = cam.FieldOfView + (baseFov + 12 * k - cam.FieldOfView) * 0.15
+						end
+					end
+				end
+			end)
+			local sec = addSection(trollTab, "Bhop")
+			sec:Toggle("Enable", "bunny hop - every jump makes you faster", function(on)
+				bhop.on = on
+				if not on then
+					resetBhop()
+				end
+				notify("Bhop: " .. (on and "On" or "Off"), on and (bhop.mode == "Auto" and "just run" or "hold space and run") or "stopped")
+			end)
+			sec:Segmented("Mode", { "Hold Space", "Auto" }, bhop.mode, function(v)
+				bhop.mode = v
+			end)
+			sec:Slider("Max speed", 30, 150, bhop.max, function(v)
+				bhop.max = v
+			end)
+			sec:Slider("Gain per hop", 2, 20, bhop.gain, function(v)
+				bhop.gain = v
+			end)
+		end
+		do
+			local spin = { on = false, speed = 10, dir = "Right" }
+			local spinHum
+			connect(RunService.Heartbeat, function(dt)
+				if not spin.on then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = getHumanoid()
+				if not hrp or not hum or hum.Health <= 0 then
+					return
+				end
+				if hum.AutoRotate then
+					hum.AutoRotate = false
+				end
+				spinHum = hum
+				local w = spin.speed * 1.5 * (spin.dir == "Right" and -1 or 1)
+				hrp.CFrame *= CFrame.Angles(0, w * dt, 0)
+			end)
+
+			local function stop()
+				if spinHum and spinHum.Parent then
+					spinHum.AutoRotate = true
+				end
+				spinHum = nil
+			end
+
+			local sec = addSection(trollTab, "Spin")
+			sec:Toggle("Enable", "spin your character around", function(on)
+				spin.on = on
+				if not on then
+					stop()
+				end
+				notify("Spin: " .. (on and "On" or "Off"), on and "weeee" or "stopped")
+			end)
+			sec:Slider("Speed", 1, 30, spin.speed, function(v)
+				spin.speed = v
+			end, function(v)
+				return v .. "x"
+			end)
+			sec:Segmented("Direction", { "Left", "Right" }, spin.dir, function(v)
+				spin.dir = v
+			end)
+
+			stopSpin = function()
+				spin.on = false
+				stop()
+			end
+		end
+		do
+			local hugAnimIds = { 125491951751014, 90892690280238, 88712283515515, 99919046918338, 127717306748023 }
+			local hugState = { on = false, target = nil }
+			local track, menuSeq2
+
+			local function getHugAnimId()
+				if menuSeq2 then
+					return menuSeq2
+				end
+				for _, id in ipairs(hugAnimIds) do
+					local ok, objs = pcall(function()
+						return game:GetObjects("rbxassetid://" .. id)
+					end)
+					if ok and type(objs) == "table" then
+						for _, o in ipairs(objs) do
+							local list = o:GetDescendants()
+							table.insert(list, 1, o)
+							for _, a in ipairs(list) do
+								if a:IsA("Animation") and a.AnimationId ~= "" then
+									menuSeq2 = a.AnimationId
+									return menuSeq2
+								end
+							end
+						end
+					end
+				end
+			end
+
+			local function stopHugAnim()
+				if track then
+					pcall(function()
+						track:Stop(0.25)
+					end)
+					track = nil
+				end
+			end
+
+			local function playHugAnim()
+				local hum = getHumanoid()
+				if not hum then
+					return
+				end
+				task.spawn(function()
+					local id = getHugAnimId()
+					if not id or not hugState.on then
+						if not id then
+							notify("Hug", "couldn't load the hug animation")
+						end
+						return
+					end
+					stopHugAnim()
+					local anim = Instance.new("Animation")
+					anim.AnimationId = id
+					local animator = hum:FindFirstChildOfClass("Animator") or hum
+					local ok, tr = pcall(function()
+						return animator:LoadAnimation(anim)
+					end)
+					if ok and tr then
+						tr.Priority = Enum.AnimationPriority.Action4
+						tr.Looped = true
+						tr:Play(0.25)
+						track = tr
+					end
+				end)
+			end
+
+			local function findNearest(exclude)
+				local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if not myRoot then
+					return nil
+				end
+				local best, bestDist
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and p ~= exclude then
+						local h = alive(p)
+						if h then
+							local d = (h.Position - myRoot.Position).Magnitude
+							if not bestDist or d < bestDist then
+								best, bestDist = p, d
+							end
+						end
+					end
+				end
+				return best
+			end
+
+			connect(RunService.Heartbeat, function()
+				if not hugState.on then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not hrp then
+					return
+				end
+				local th = alive(hugState.target)
+				if not th then
+					hugState.target = findNearest()
+					th = alive(hugState.target)
+					if not th then
+						return
+					end
+					notify("Hug", "hugging " .. hugState.target.DisplayName)
+				end
+				local front = th.CFrame * CFrame.new(0, 0, -1.4)
+				hrp.CFrame = CFrame.lookAt(front.Position, Vector3.new(th.Position.X, front.Position.Y, th.Position.Z))
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				if not track then
+					playHugAnim()
+				end
+			end)
+			local sec = addSection(trollTab, "Hug")
+			sec:Toggle("Hug", "hug the nearest player - everyone sees it", function(on)
+				hugState.on = on
+				if on then
+					hugState.target = findNearest()
+					if hugState.target then
+						notify("Hug", "hugging " .. hugState.target.DisplayName)
+						playHugAnim()
+					else
+						notify("Hug", "nobody around")
+					end
+				else
+					stopHugAnim()
+					hugState.target = nil
+				end
+			end)
+			sec:Button("Next player", "hug someone else", function()
+				local list = {}
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and alive(p) then
+						table.insert(list, p)
+					end
+				end
+				if #list == 0 then
+					notify("Hug", "nobody around")
+					return
+				end
+				local i = table.find(list, hugState.target) or 0
+				hugState.target = list[i % #list + 1]
+				notify("Hug", "hugging " .. hugState.target.DisplayName)
+			end)
+			table.insert(connections, {
+				Disconnect = function()
+					stopHugAnim()
+				end,
+			})
+		end
+		
+		
+		do
+			local fling = { autoSheriff = false, busy = false, cancel = false, nextScan = 0, autoCharacter = nil, autoReadyAt = 0 }
+			local flungCharacters = {}
 			local roleCache, roleCacheAt = {}, 0
 			local activeCleanup
 
@@ -3613,6 +8552,29 @@ local droneTab = addTab("SRC Drone", "drone", "Shahed and FPV drone controls")
 				return role == "Murderer" and value == "Murderer" or role == "Sheriff" and (value == "Sheriff" or value == "Hero")
 			end
 
+			local function findRole(role)
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and hasRole(p, role) then
+						local char = p.Character
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						local root = char and char:FindFirstChild("HumanoidRootPart")
+						if hum and hum.Health > 0 and root then
+							return p
+						end
+					end
+				end
+				refreshRoles()
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and hasRole(p, role) then
+						local char = p.Character
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						local root = char and char:FindFirstChild("HumanoidRootPart")
+						if hum and hum.Health > 0 and root then
+							return p
+						end
+					end
+				end
+			end
 
 			local function impact(pos, color)
 				local ring = create("Part", {
@@ -3865,14 +8827,70 @@ local droneTab = addTab("SRC Drone", "drone", "Shahed and FPV drone controls")
 				return ok and launched
 			end
 
-playerFlingAction = function(target)
-local role = hasRole(target, "Sheriff") and "Sheriff" or (hasRole(target, "Murderer") and "Murderer" or "Player")
-return flingPlayer(target, role, true)
-end
-end
+			local function flingRole(role, manual)
+				local target = findRole(role)
+				if not target then
+					if manual then
+						notify("Role Fling", role:lower() .. " not found")
+					end
+					return false
+				end
+				return flingPlayer(target, role, manual), target
+			end
+
+			connect(RunService.Heartbeat, function()
+				if not fling.autoSheriff or fling.busy or os.clock() < fling.nextScan then
+					return
+				end
+				fling.nextScan = os.clock() + 0.8
+				local target = findRole("Sheriff")
+				local char = target and target.Character
+				local targetRoot = char and char:FindFirstChild("HumanoidRootPart")
+				local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if not char or not targetRoot or not myRoot or flungCharacters[char] or inLobby(targetRoot.Position) or inLobby(myRoot.Position) then
+					fling.autoCharacter = nil
+					fling.autoReadyAt = 0
+					return
+				end
+				if fling.autoCharacter ~= char then
+					fling.autoCharacter = char
+					fling.autoReadyAt = os.clock() + 2.5
+					return
+				end
+				if os.clock() < fling.autoReadyAt or target.Character ~= char or not hasRole(target, "Sheriff") then
+					return
+				end
+				fling.autoReadyAt = os.clock() + 2.5
+				task.spawn(function()
+					if flingPlayer(target, "Sheriff", false) then
+						flungCharacters[char] = true
+					end
+				end)
+			end)
+			connect(Players.PlayerRemoving, function(p)
+				if p.Character then
+					flungCharacters[p.Character] = nil
+				end
+			end)
+
+			playerFlingAction = function(target)
+				local role = hasRole(target, "Sheriff") and "Sheriff" or (hasRole(target, "Murderer") and "Murderer" or "Player")
+				return flingPlayer(target, role, true)
+			end
+
+			stopRoleFling = function()
+				fling.autoSheriff = false
+				fling.cancel = true
+				if activeCleanup then
+					activeCleanup()
+				end
+			end
+		end
 		do
+			local autoKill = false
 			local killing = false
 			local cancelKill = false
+			local lastAutoKill = 0
 
 			local function getTargets(sheriffOnly, origin, includeLobby)
 				local list = {}
@@ -4072,7 +9090,21 @@ end
 					notify("Kill All", ("killed %d/%d in %.2fs"):format(killed, #list, os.clock() - gradStart2))
 				end
 			end
+			playerKnifeKill = function(target)
+				killAll(false, false, { target })
+			end
 
+			connect(RunService.Heartbeat, function()
+				if not autoKill or killing or os.clock() - lastAutoKill < 2 then
+					return
+				end
+				local hrp = alive(player)
+				if not hrp or inLobby(hrp.Position) or not findTool(player, "Knife") then
+					return
+				end
+				lastAutoKill = os.clock()
+				task.spawn(killAll, false, true)
+			end)
 			local shahedIds = { 120141614672192, 111443745475294, 16531510943 }
 			local shahedFlip = { [120141614672192] = -1 }
 			local soundIds = {
@@ -5655,27 +10687,1713 @@ end
 				task.spawn(launchDroneSafe)
 			end)
 		end
+		do
+			local shotArgs, isBlocked
+			local lastPos, desyncUntil = {}, {}
+			connect(RunService.Heartbeat, function()
+				local now = os.clock()
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player then
+						local c = p.Character
+						local h = c and c:FindFirstChild("HumanoidRootPart")
+						if h then
+							local prev = lastPos[p]
+							local moved = prev and (h.Position - prev).Magnitude or 0
+							if moved > 30 or h.AssemblyLinearVelocity.Magnitude > 150 then
+								desyncUntil[p] = now + 1.5
+							end
+							lastPos[p] = h.Position
+						else
+							lastPos[p] = nil
+						end
+					end
+				end
+				for p in pairs(lastPos) do
+					if not p.Parent then
+						lastPos[p], desyncUntil[p] = nil, nil
+					end
+				end
+			end)
 
-selectTab(droneTab)
-for _, item in ipairs(registry) do
-local value = config[item.key]
-if value ~= nil then pcall(item.set, value) end
-end
-dirty = false
-loading = false
+			local function isDesyncing(p)
+				return p and (desyncUntil[p] or 0) > os.clock()
+			end
 
-_G.RockHubUnload = function()
-if droneCleanup then pcall(droneCleanup) end
-for _, connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
-table.clear(connections)
-keyListener = nil
-if dirty then pcall(saveConfig) end
-pcall(disableAntiFling)
-pcall(function() RunService:UnbindFromRenderStep("RockHubShahedPilot") end)
-if blur and blur.Parent then blur:Destroy() end
-if gui and gui.Parent then gui:Destroy() end
-_G.RockHubUnload = nil
-end
+			local function expandHitbox(murdererRoot)
+				if not murdererRoot or not murdererRoot.Parent then
+					return function() end
+				end
+				local o = { size = murdererRoot.Size, transp = murdererRoot.Transparency, collide = murdererRoot.CanCollide }
+				pcall(function()
+					murdererRoot.CanCollide = false
+					murdererRoot.Transparency = 1
+					murdererRoot.Size = Vector3.one * 50
+				end)
+				local done = false
+				return function()
+					if done then
+						return
+					end
+					done = true
+					if murdererRoot.Parent then
+						pcall(function()
+							murdererRoot.Size = o.size
+							murdererRoot.Transparency = o.transp
+							murdererRoot.CanCollide = o.collide
+						end)
+					end
+				end
+			end
+
+			local silentAim = {
+				on = false,
+				wallbang = true,
+				pred = 100,
+				part = "Torso",
+				auto = true,
+				quiet = true,
+				mode = "Remote",
+			}
+			local busy = false
+			local wallMisses = 0
+			local forceAimUntil = 0
+			local lastRedirect = 0
+			local aimParams = RaycastParams.new()
+			aimParams.FilterType = Enum.RaycastFilterType.Exclude
+			local peekOffsets = {
+				Vector3.new(0, 0, 4),
+				Vector3.new(0, 0, -4),
+				Vector3.new(4, 0, 0),
+				Vector3.new(-4, 0, 0),
+				Vector3.new(0, 5, 3),
+				Vector3.new(0, 2, 2),
+			}
+			local quietOffsets = {
+				Vector3.new(0, 4, 0),
+				Vector3.new(0, 7, 0),
+				Vector3.new(3, 0, 0),
+				Vector3.new(-3, 0, 0),
+				Vector3.new(3, 4, 0),
+				Vector3.new(-3, 4, 0),
+				Vector3.new(0, 0, -3),
+				Vector3.new(0, 10, 0),
+			}
+
+			local function findQuietSpot(murdererRoot, myChar)
+				local root = myChar and myChar:FindFirstChild("HumanoidRootPart")
+				if not root then
+					return nil
+				end
+				aimParams.FilterDescendantsInstances = { myChar, murdererRoot.Parent, workspace.CurrentCamera }
+				local facing = CFrame.lookAt(root.Position, Vector3.new(murdererRoot.Position.X, root.Position.Y, murdererRoot.Position.Z))
+				for _, offset in ipairs(quietOffsets) do
+					local pos = (facing * CFrame.new(offset)).Position
+					if not isBlocked(root.Position, pos) and not isBlocked(pos, murdererRoot.Position) then
+						return CFrame.lookAt(pos, murdererRoot.Position)
+					end
+				end
+			end
+
+			local function getMuzzle()
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				return hrp and hrp:FindFirstChild("GunRaycastAttachment")
+			end
+
+			local function muzzlePos(fallback)
+				local a = getMuzzle()
+				return a and a.WorldPosition or fallback
+			end
+
+			shotArgs = function(origin, aimPos, fromOrigin)
+				local a = getMuzzle()
+				local from = not fromOrigin and a and a.WorldCFrame or CFrame.lookAt(origin, aimPos)
+				local dir = aimPos - from.Position
+				if dir.Magnitude < 0.01 then
+					dir = Vector3.new(0, 0, -1)
+				end
+				return from, CFrame.lookAt(aimPos, aimPos + dir.Unit)
+			end
+
+			isBlocked = function(a, b, extraIgnore)
+				local list = { workspace.CurrentCamera }
+				for _, x in ipairs(extraIgnore or {}) do
+					table.insert(list, x)
+				end
+				for _, pl in ipairs(Players:GetPlayers()) do
+					if pl.Character then
+						table.insert(list, pl.Character)
+					end
+				end
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				for _ = 1, 8 do
+					params.FilterDescendantsInstances = list
+					local hit = workspace:Raycast(a, b - a, params)
+					if not hit then
+						return false
+					end
+					local pt = hit.Instance
+					if pt.Transparency >= 0.9 or not pt.CanCollide then
+						table.insert(list, pt)
+					else
+						return true
+					end
+				end
+				return true
+			end
+
+			local function findWallbangSpot(murdererRoot, muzzle)
+				local toMuzzle = muzzle - murdererRoot.Position
+				toMuzzle = toMuzzle.Magnitude > 0.1 and toMuzzle.Unit or Vector3.new(0, 0, 1)
+				for _, d in ipairs({ 3, 2, 5, 1.5 }) do
+					local spot = murdererRoot.Position + toMuzzle * d + Vector3.new(0, 1, 0)
+					if not isBlocked(spot, murdererRoot.Position) then
+						return spot
+					end
+				end
+				for _, offset in ipairs(peekOffsets) do
+					local spot = (murdererRoot.CFrame * CFrame.new(offset)).Position
+					if not isBlocked(spot, murdererRoot.Position) then
+						return spot
+					end
+				end
+				return murdererRoot.Position + Vector3.new(0, 3, 0)
+			end
+
+			local function reportWallbang(hit)
+				if hit then
+					wallMisses = 0
+					return
+				end
+				wallMisses = wallMisses + 1
+				if wallMisses == 2 then
+					notify("WallBang", "missed twice through walls - send the shot log")
+				end
+			end
+
+			local function getPeekCf(murdererRoot, myChar)
+				if silentAim.quiet then
+					local s = findQuietSpot(murdererRoot, myChar)
+					if s then
+						return s
+					end
+				end
+				aimParams.FilterDescendantsInstances = { myChar, murdererRoot.Parent, workspace.CurrentCamera }
+				for _, offset in ipairs(peekOffsets) do
+					local pos = (murdererRoot.CFrame * CFrame.new(offset)).Position
+					if not isBlocked(pos, murdererRoot.Position) then
+						return CFrame.lookAt(pos, murdererRoot.Position)
+					end
+				end
+				local behind = murdererRoot.CFrame * CFrame.new(0, 0, 3)
+				return CFrame.lookAt(behind.Position, murdererRoot.Position)
+			end
+
+			local function getMurderer()
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= player and findTool(p, "Knife") then
+						local char = p.Character
+						local hrp = char and char:FindFirstChild("HumanoidRootPart")
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						if hrp and hum and hum.Health > 0 then
+							return p, hrp
+						end
+					end
+				end
+			end
+
+			local function findGunRemote(gun)
+				local knifeLocal = gun:FindFirstChild("KnifeLocal")
+				local cb = knifeLocal and knifeLocal:FindFirstChild("CreateBeam")
+				local remote = cb and cb:FindFirstChild("RemoteFunction")
+				if remote then
+					return remote, "beam"
+				end
+				for _, d in ipairs(gun:GetDescendants()) do
+					if (d:IsA("RemoteEvent") or d:IsA("RemoteFunction")) and d.Name:lower():find("shoot") then
+						return d, "shoot"
+					end
+				end
+			end
+
+			local function equipGun()
+				local char = player.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not hum then
+					return
+				end
+				local gun = char:FindFirstChild("Gun")
+				if gun then
+					return gun
+				end
+				local backpack = player:FindFirstChildOfClass("Backpack")
+				gun = backpack and backpack:FindFirstChild("Gun")
+				if not gun then
+					return
+				end
+				hum:EquipTool(gun)
+				for _ = 1, 10 do
+					if gun.Parent == char then
+						break
+					end
+					RunService.Heartbeat:Wait()
+				end
+				return gun
+			end
+
+			local function shootMurderer(manual)
+				if busy then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not hrp or not hum or hum.Health <= 0 then
+					return
+				end
+				if not findTool(player, "Gun") then
+					if manual then
+						notify("Shoot Murderer", "you don't have the gun")
+					end
+					return
+				end
+				local _, murdererRoot = getMurderer()
+				if not murdererRoot then
+					if manual then
+						notify("Shoot Murderer", "murderer not found")
+					end
+					return
+				end
+				local gun = equipGun()
+				if not gun then
+					return
+				end
+				if silentAim.mode == "Module" then
+					forceAimUntil = os.clock() + 0.5
+					pcall(function()
+						gun:Activate()
+					end)
+					return
+				end
+				local gunRemote, kind = findGunRemote(gun)
+				local tr = os.clock()
+				while not gunRemote and os.clock() - tr < 1 do
+					RunService.Heartbeat:Wait()
+					gunRemote, kind = findGunRemote(gun)
+				end
+				if not gunRemote then
+					notify("Shoot Murderer", "gun remote not found")
+					return
+				end
+				busy = true
+				pauseDesync(hrp)
+				local savedCF = hrp.CFrame
+				local cam = workspace.CurrentCamera
+				local oldCamType = cam.CameraType
+				local wallbang = silentAim.wallbang
+				local pingMs = getPing() / 1000
+				local murdererChar = murdererRoot.Parent
+				local murderer = Players:GetPlayerFromCharacter(murdererChar)
+				local desynced = isDesyncing(murderer)
+
+				local function predictAim()
+					if desynced then
+						return murdererRoot.Position
+					end
+					local target = murdererRoot
+					if silentAim.part == "Head" then
+						target = murdererChar:FindFirstChild("Head") or murdererRoot
+					else
+						target = murdererChar:FindFirstChild("UpperTorso") or murdererChar:FindFirstChild("Torso") or murdererRoot
+					end
+					local v = murdererRoot.AssemblyLinearVelocity
+					local lead = silentAim.pred / 1000
+					return target.Position + Vector3.new(v.X, v.Y * 0.5, v.Z) * lead
+				end
+
+				local peekCf, holdConn
+				local wbSpot
+				if wallbang then
+					local muzzle = muzzlePos(gun:FindFirstChild("Handle") and gun.Handle.Position or hrp.Position)
+					if not isBlocked(muzzle, murdererRoot.Position) then
+						wallbang = false
+					else
+						wbSpot = findWallbangSpot(murdererRoot, muzzle)
+						wallbang = false
+					end
+				end
+				if wallbang then
+					cam.CameraType = Enum.CameraType.Scriptable
+					peekCf = getPeekCf(murdererRoot, char)
+					hrp.CFrame = peekCf
+					hrp.AssemblyLinearVelocity = Vector3.zero
+					holdConn = RunService.Stepped:Connect(function()
+						if peekCf and hrp.Parent then
+							if murdererRoot.Parent and not silentAim.quiet then
+								peekCf = getPeekCf(murdererRoot, char)
+							end
+							hrp.CFrame = peekCf
+							hrp.AssemblyLinearVelocity = Vector3.zero
+						end
+					end)
+				end
+				local recentFake = os.clock() - (desync.lastFakeAt or 0) < 0.6
+				if wallbang and not recentFake then
+					RunService.Heartbeat:Wait()
+				end
+				if recentFake then
+					local waitUntil = (desync.lastFakeAt or 0) + math.clamp(pingMs / 2, 0.02, 0.2) + 0.05
+					while os.clock() < waitUntil do
+						RunService.Heartbeat:Wait()
+					end
+				end
+				local aimPos = predictAim()
+				local handle = gun:FindFirstChild("Handle")
+				local origin = wbSpot or (handle and handle.Position or hrp.Position)
+				local murdererHum = murdererChar and murdererChar:FindFirstChildOfClass("Humanoid")
+				if murdererHum then
+					task.spawn(function()
+						local t = os.clock()
+						while os.clock() - t < 1.2 do
+							if murdererHum.Health <= 0 or not murdererHum.Parent then
+								if wbSpot then
+									reportWallbang(true)
+								end
+								notify("Silent Aimbot", "hit")
+								return
+							end
+							RunService.Heartbeat:Wait()
+						end
+						if wbSpot then
+							reportWallbang(false)
+						end
+						notify("Silent Aimbot", silentAim.auto and "miss" or "miss - try changing Prediction")
+					end)
+				end
+				local restoreHitbox = expandHitbox(murdererRoot)
+				task.delay(0.4, restoreHitbox)
+				task.spawn(function()
+					local ok, res = pcall(function()
+						if kind == "beam" then
+							return gunRemote:InvokeServer(1, aimPos, "AH2")
+						elseif gunRemote:IsA("RemoteFunction") then
+							return gunRemote:InvokeServer(shotArgs(origin, aimPos, wbSpot ~= nil))
+						else
+							gunRemote:FireServer(shotArgs(origin, aimPos, wbSpot ~= nil))
+							return "(event, no reply)"
+						end
+					end)
+					if not ok then
+						warn("[rockhub] shot failed: " .. tostring(res))
+					end
+				end)
+				if wallbang then
+					local t = os.clock()
+					local holdTime = math.clamp(pingMs / 2 + 0.03333333333333333, 0.05, 0.18)
+					repeat
+						RunService.Heartbeat:Wait()
+					until os.clock() - t >= holdTime
+					holdConn:Disconnect()
+					if hrp.Parent and hum.Health > 0 then
+						hrp.CFrame = savedCF
+						hrp.AssemblyLinearVelocity = Vector3.zero
+					end
+					cam.CameraType = oldCamType
+					cam.CameraSubject = hum
+				end
+				busy = false
+				resumeDesync()
+			end
+			playerGunKill = function(target)
+				if not target or not findTool(target, "Knife") then
+					notify("Kill", "the sheriff can only shoot the murderer")
+					return
+				end
+				shootMurderer(true)
+			end
+
+			local disabledScripts = {}
+
+			local function disableGunScripts(gun)
+				for _, d in ipairs(gun:GetDescendants()) do
+					if d:IsA("LocalScript") and not d.Disabled then
+						disabledScripts[d] = true
+						d.Disabled = true
+					end
+				end
+			end
+
+			local function restoreGunScripts()
+				for ls in pairs(disabledScripts) do
+					if ls.Parent then
+						ls.Disabled = false
+					end
+				end
+				table.clear(disabledScripts)
+			end
+
+			table.insert(connections, {
+				Disconnect = function()
+					restoreGunScripts()
+					for _, container in ipairs({ player.Character, player:FindFirstChildOfClass("Backpack") }) do
+						local g = container and container:FindFirstChild("Gun")
+						if g then
+							pcall(function()
+								g.ManualActivationOnly = false
+							end)
+						end
+					end
+				end,
+			})
+			local activatedConn, hookedGun
+			connect(RunService.Heartbeat, function()
+				local char = player.Character
+				local gun = char and char:FindFirstChild("Gun")
+				if silentAim.on and gun and silentAim.mode == "Remote" then
+					disableGunScripts(gun)
+				end
+				if gun then
+					local want = silentAim.on and silentAim.mode == "Native"
+					if gun.ManualActivationOnly ~= want then
+						gun.ManualActivationOnly = want
+					end
+				end
+				if gun == hookedGun then
+					return
+				end
+				if activatedConn then
+					activatedConn:Disconnect()
+					activatedConn = nil
+				end
+				hookedGun = gun
+				if gun then
+					activatedConn = gun.Activated:Connect(function()
+						if silentAim.on and gui.Parent and silentAim.mode == "Module" and getMurderer() then
+							local t = os.clock()
+							task.delay(0.3, function()
+								if silentAim.mode == "Module" and lastRedirect < t then
+									silentAim.mode = "Remote"
+									notify("Silent Aimbot", "switched to backup mode - shoot again")
+								end
+							end)
+						end
+						if silentAim.on and gui.Parent and silentAim.mode == "Remote" then
+							if getMurderer() then
+								task.spawn(shootMurderer, false)
+							else
+								task.spawn(function()
+									local gunRemote, kind = findGunRemote(gun)
+									if not gunRemote then
+										return
+									end
+									local aimPos = player:GetMouse().Hit.Position
+									local handle = gun:FindFirstChild("Handle")
+									local origin = handle and handle.Position or aimPos
+									pcall(function()
+										if kind == "beam" then
+											gunRemote:InvokeServer(1, aimPos, "AH2")
+										elseif gunRemote:IsA("RemoteFunction") then
+											gunRemote:InvokeServer(shotArgs(origin, aimPos))
+										else
+											gunRemote:FireServer(shotArgs(origin, aimPos))
+										end
+									end)
+								end)
+							end
+						end
+					end)
+					table.insert(connections, activatedConn)
+				end
+			end)
+			local nativeBusy = false
+
+			local function nativeShot()
+				if nativeBusy then
+					return
+				end
+				local char = player.Character
+				local gun = char and char:FindFirstChild("Gun")
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not gun or not hrp then
+					return
+				end
+				local _, murdererRoot = getMurderer()
+				if not murdererRoot then
+					pcall(function()
+						gun:Activate()
+					end)
+					return
+				end
+				local handle = gun:FindFirstChild("Handle")
+				local muzzle = muzzlePos(handle and handle.Position or hrp.Position)
+				if isBlocked(muzzle, murdererRoot.Position) and silentAim.wallbang then
+					task.spawn(shootMurderer, false)
+					return
+				end
+				nativeBusy = true
+				local murdererChar = murdererRoot.Parent
+				local target = murdererChar:FindFirstChild("UpperTorso") or murdererChar:FindFirstChild("Torso") or murdererRoot
+				local v = murdererRoot.AssemblyLinearVelocity
+				local lead = silentAim.pred / 1000
+				local aimPos = target.Position + Vector3.new(v.X, v.Y * 0.5, v.Z) * lead
+				local cam = workspace.CurrentCamera
+				local locked = UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+				if locked or not mousemoveabs then
+					cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos)
+					RunService.RenderStepped:Wait()
+					cam.CFrame = CFrame.lookAt(cam.CFrame.Position, aimPos)
+					pcall(function()
+						gun:Activate()
+					end)
+				else
+					local p = cam:WorldToViewportPoint(aimPos)
+					local old = UserInputService:GetMouseLocation()
+					mousemoveabs(p.X, p.Y)
+					RunService.RenderStepped:Wait()
+					RunService.RenderStepped:Wait()
+					pcall(function()
+						gun:Activate()
+					end)
+					RunService.RenderStepped:Wait()
+					mousemoveabs(old.X, old.Y)
+				end
+				local murdererHum = murdererChar:FindFirstChildOfClass("Humanoid")
+				if murdererHum then
+					task.spawn(function()
+						local t = os.clock()
+						while os.clock() - t < 1.2 do
+							if murdererHum.Health <= 0 or not murdererHum.Parent then
+								notify("Silent Aimbot", "hit")
+								return
+							end
+							RunService.Heartbeat:Wait()
+						end
+						notify("Silent Aimbot", "miss")
+					end)
+				end
+				task.delay(0.15, function()
+					nativeBusy = false
+				end)
+			end
+
+			connect(UserInputService.InputBegan, function(input, gameProcessed)
+				if gameProcessed or not silentAim.on or silentAim.mode ~= "Native" then
+					return
+				end
+				if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+					return
+				end
+				local char = player.Character
+				if char and char:FindFirstChild("Gun") then
+					task.spawn(nativeShot)
+				end
+			end)
+			;(function()
+				local ok, weaponService = pcall(function()
+					return require(game:GetService("ReplicatedStorage"):WaitForChild("ClientServices", 5):WaitForChild("WeaponService", 5))
+				end)
+				if not ok or type(weaponService) ~= "table" then
+					return
+				end
+				local oldMouse, oldTargetPos = weaponService.GetMouseTargetCFrame, weaponService.GetTargetPosition
+				if type(oldMouse) ~= "function" then
+					return
+				end
+				local bodyParts = { "UpperTorso", "Torso", "LowerTorso", "Head", "HumanoidRootPart", "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm", "RightUpperLeg", "LeftUpperLeg", "Right Leg", "Left Leg" }
+				local headFirst = { "Head", "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart", "RightUpperArm", "LeftUpperArm", "Right Arm", "Left Arm", "RightUpperLeg", "LeftUpperLeg", "Right Leg", "Left Leg" }
+				local rayParams = RaycastParams.new()
+				rayParams.FilterType = Enum.RaycastFilterType.Exclude
+				local CollectionService = game:GetService("CollectionService")
+				local passthrough, passthroughAt = {}, 0
+
+				local function withPassthrough(...)
+					if os.clock() - passthroughAt > 1 then
+						passthroughAt = os.clock()
+						passthrough = CollectionService:GetTagged("WeaponPassthrough")
+					end
+					local list = { ... }
+					for _, x in ipairs(passthrough) do
+						table.insert(list, x)
+					end
+					return list
+				end
+
+				local hist = {}
+				connect(RunService.Heartbeat, function()
+					if not silentAim.on then
+						table.clear(hist)
+						return
+					end
+					local _, murd = getMurderer()
+					local now = os.clock()
+					for h in pairs(hist) do
+						if h ~= murd then
+							hist[h] = nil
+						end
+					end
+					if not murd then
+						return
+					end
+					local list = hist[murd] or {}
+					hist[murd] = list
+					table.insert(list, { now, murd.Position })
+					while #list > 2 and now - list[1][1] > 0.5 do
+						table.remove(list, 1)
+					end
+				end)
+
+				local function estimateVelocity(murdererRoot)
+					local list = hist[murdererRoot]
+					if not list or #list < 2 then
+						return murdererRoot.AssemblyLinearVelocity
+					end
+					local a, b = list[1], list[#list]
+					local dt = b[1] - a[1]
+					if dt < 0.15 then
+						return murdererRoot.AssemblyLinearVelocity
+					end
+					return (b[2] - a[2]) / dt
+				end
+
+				local function predictPos(murdererRoot, from)
+					local murdererChar = murdererRoot.Parent
+					if isDesyncing(Players:GetPlayerFromCharacter(murdererChar)) then
+						return murdererRoot.Position
+					end
+					local v = estimateVelocity(murdererRoot)
+					local lead = silentAim.auto and math.clamp(getPing() / 2000 + 0.1, 0, 0.45) or silentAim.pred / 1000
+					local murdererHum = murdererChar:FindFirstChildOfClass("Humanoid")
+					local airborne = murdererHum and murdererHum.FloorMaterial == Enum.Material.Air
+					local dy = 0
+					if airborne then
+						local vy = murdererRoot.AssemblyLinearVelocity.Y
+						dy = vy * lead - 0.5 * workspace.Gravity * lead * lead
+						if dy < 0 then
+							rayParams.FilterDescendantsInstances = withPassthrough(murdererChar, player.Character, workspace.CurrentCamera)
+							local lookSign = workspace:Raycast(murdererRoot.Position, Vector3.new(0, -60, 0), rayParams)
+							if lookSign then
+								dy = math.max(dy, -(murdererRoot.Position.Y - lookSign.Position.Y - 3))
+							end
+						end
+					end
+					local leadOffset = Vector3.new(v.X * lead, dy, v.Z * lead)
+					local fallbackAim
+					rayParams.FilterDescendantsInstances = withPassthrough(player.Character, workspace.CurrentCamera)
+					for _, n in ipairs(silentAim.part == "Head" and headFirst or bodyParts) do
+						local part = murdererChar:FindFirstChild(n)
+						if part and part:IsA("BasePart") then
+							local target = part.Position + leadOffset
+							fallbackAim = fallbackAim or target
+							if not from then
+								return target
+							end
+							local dir = target - from
+							local hit = workspace:Raycast(from, dir.Unit * (dir.Magnitude + 2), rayParams)
+							if not hit or hit.Instance:IsDescendantOf(murdererChar) then
+								return target
+							end
+						end
+					end
+					return fallbackAim or murdererRoot.Position + leadOffset
+				end
+
+				local function watchHit(murdererChar, usedWallbang)
+					local murdererHum = murdererChar and murdererChar:FindFirstChildOfClass("Humanoid")
+					if not murdererHum then
+						return
+					end
+					task.spawn(function()
+						local t = os.clock()
+						while os.clock() - t < 1.2 do
+							if murdererHum.Health <= 0 or not murdererHum.Parent then
+								if usedWallbang then
+									reportWallbang(true)
+								end
+								notify("Silent Aimbot", "hit")
+								return
+							end
+							RunService.Heartbeat:Wait()
+						end
+						if usedWallbang then
+							reportWallbang(false)
+						end
+						notify("Silent Aimbot", silentAim.auto and "miss" or "miss - try changing Prediction")
+					end)
+				end
+
+				local function canHit(origin, murdererChar, target)
+					rayParams.FilterDescendantsInstances = withPassthrough(player.Character, workspace.CurrentCamera)
+					local d = target - origin
+					local hit = workspace:Raycast(origin, d.Unit * (d.Magnitude + 2), rayParams)
+					return not hit or hit.Instance:IsDescendantOf(murdererChar)
+				end
+
+				local function anyPartVisible(murdererChar, origin)
+					for _, n in ipairs(bodyParts) do
+						local part = murdererChar:FindFirstChild(n)
+						if part and part:IsA("BasePart") and canHit(origin, murdererChar, part.Position) then
+							return true
+						end
+					end
+					return false
+				end
+
+				local function rayBlocked(origin, to)
+					rayParams.FilterDescendantsInstances = withPassthrough(player.Character, workspace.CurrentCamera)
+					local d = to - origin
+					if d.Magnitude < 0.05 then
+						return false
+					end
+					return workspace:Raycast(origin, d, rayParams) ~= nil
+				end
+
+				local function findDirectSpot(murdererRoot, muzzle)
+					local murdererChar = murdererRoot.Parent
+					local toMuzzle = muzzle - murdererRoot.Position
+					local base = math.atan2(toMuzzle.Z, toMuzzle.X)
+					for _, dist in ipairs({ 3, 5, 7 }) do
+						for k = 0, 11 do
+							local angle = base + (k % 2 == 0 and 1 or -1) * math.ceil(k / 2) * (math.pi / 6)
+							for _, h in ipairs({ 1.5, 3.5 }) do
+								local p = murdererRoot.Position + Vector3.new(math.cos(angle) * dist, h, math.sin(angle) * dist)
+								if canHit(p, murdererChar, murdererRoot.Position) and anyPartVisible(murdererChar, p) then
+									return p
+								end
+							end
+						end
+					end
+				end
+
+				local function redirectAim(res)
+					lastRedirect = os.clock()
+					if not ((silentAim.on or os.clock() < forceAimUntil) and gui.Parent) then
+						return res
+					end
+					if busy then
+						local _, murd = getMurderer()
+						local at = getMuzzle()
+						if not murd or not at or typeof(res) ~= "CFrame" then
+							return res
+						end
+						local aimPoint = predictPos(murd, at.WorldPosition)
+						local aimDir = aimPoint - at.WorldPosition
+						if aimDir.Magnitude < 0.01 then
+							return res
+						end
+						return CFrame.lookAt(aimPoint, aimPoint + aimDir.Unit)
+					end
+					local fakeAt = desync.lastFakeAt or 0
+					if os.clock() - fakeAt < 0.6 then
+						local waitUntil = fakeAt + math.clamp(getPing() / 2000, 0.02, 0.25) + 0.05
+						while os.clock() < waitUntil do
+							RunService.Heartbeat:Wait()
+						end
+					end
+					local _, murdererRoot = getMurderer()
+					local char = player.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if not murdererRoot or not hrp or not hum then
+						return res
+					end
+					local a = getMuzzle()
+					local muzzle = a and a.WorldPosition or hrp.Position
+					local usedWallbang = false
+					local head = char:FindFirstChild("Head")
+					local muzzleInWall = rayBlocked(head and head.Position or hrp.Position, muzzle) or rayBlocked(hrp.Position, muzzle)
+					local bodyVisible = anyPartVisible(murdererRoot.Parent, muzzle)
+					if not bodyVisible and not muzzleInWall and (murdererRoot.Position - muzzle).Magnitude < 6 then
+						bodyVisible = true
+					end
+					local pathUsed = false
+					if a then
+						local murdererChar = murdererRoot.Parent
+						local murd = murdererChar:FindFirstChildOfClass("Humanoid")
+						local grounded = murd and murd.FloorMaterial ~= Enum.Material.Air
+						local vel = estimateVelocity(murdererRoot)
+						local flatVel = Vector3.new(vel.X, 0, vel.Z)
+						if grounded and flatVel.Magnitude > 4 and (silentAim.wallbang or not muzzleInWall and bodyVisible) then
+							local predicted = predictPos(murdererRoot, nil)
+							local cur = (murdererChar:FindFirstChild("UpperTorso") or murdererChar:FindFirstChild("Torso") or murdererRoot).Position
+							local line2 = predicted - cur
+							local dir = line2.Magnitude > 0.5 and line2.Unit or flatVel.Unit
+							local o = cur - dir * 5
+							if (o - murdererRoot.Position).Magnitude >= 4 and canHit(o, murdererChar, cur) and canHit(o, murdererChar, predicted) then
+								pathUsed = true
+								usedWallbang = muzzleInWall or not bodyVisible
+								local oldAttCf = a.CFrame
+								a.WorldPosition = o
+								task.defer(function()
+									if a.Parent then
+										a.CFrame = oldAttCf
+									end
+								end)
+								muzzle = o
+							end
+						end
+					end
+					if not pathUsed and silentAim.wallbang and (muzzleInWall or not bodyVisible) and a then
+						local p = findDirectSpot(murdererRoot, muzzle)
+						if p then
+							usedWallbang = true
+							local oldAttCf = a.CFrame
+							a.WorldPosition = p
+							task.defer(function()
+								if a.Parent then
+									a.CFrame = oldAttCf
+								end
+							end)
+							muzzle = p
+						end
+					end
+					local aimPos = predictPos(murdererRoot, muzzle)
+					watchHit(murdererRoot.Parent, usedWallbang)
+					if typeof(res) == "Vector3" then
+						return aimPos
+					end
+					local from = a and a.WorldPosition or muzzle
+					local dir = aimPos - from
+					if dir.Magnitude < 0.01 then
+						dir = Vector3.new(0, 0, -1)
+					end
+					return CFrame.lookAt(aimPos, aimPos + dir.Unit)
+				end
+
+				local function safeRedirect(res)
+					local ok2, r = pcall(redirectAim, res)
+					if ok2 then
+						return r
+					end
+					warn("[rockhub] aim redirect failed: " .. tostring(r))
+					return res
+				end
+
+				weaponService.GetMouseTargetCFrame = function(...)
+					return safeRedirect(oldMouse(...))
+				end
+
+				if type(oldTargetPos) == "function" then
+					weaponService.GetTargetPosition = function(...)
+						return safeRedirect(oldTargetPos(...))
+					end
+				end
+				silentAim.mode = "Module"
+				table.insert(connections, {
+					Disconnect = function()
+						weaponService.GetMouseTargetCFrame = oldMouse
+						if oldTargetPos then
+							weaponService.GetTargetPosition = oldTargetPos
+						end
+					end,
+				})
+			end)()
+			
+		end
+		do
+			local desyncCfg = { on = false, mode = "Random", radius = 80, interval = 30, tracer = true }
+			local fakePos
+			local nextPick = 0
+			local rayParams = RaycastParams.new()
+			rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+			local function randomSpot(center, char)
+				rayParams.FilterDescendantsInstances = { char, workspace.CurrentCamera }
+				for _ = 1, 8 do
+					local a = math.random() * math.pi * 2
+					local d = desyncCfg.radius * (0.4 + 0.6 * math.random())
+					local p = center + Vector3.new(math.cos(a) * d, 0, math.sin(a) * d)
+					local hit = workspace:Raycast(p + Vector3.new(0, 40, 0), Vector3.new(0, -120, 0), rayParams)
+					if hit then
+						return hit.Position + Vector3.new(0, 3, 0)
+					end
+				end
+				return center + Vector3.new(0, 0, desyncCfg.radius)
+			end
+
+			connect(RunService.Heartbeat, function()
+				if not (desyncCfg.on or desync.force) or desync.pause > 0 then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not hrp or not hum or hum.Health <= 0 then
+					return
+				end
+				desync.gunHold = char:FindFirstChild("Gun") ~= nil
+				if desync.gunHold then
+					desync.fakeCF = nil
+					return
+				end
+				local now = os.clock()
+				local pos = hrp.Position
+				if desync.force and desync.v2 then
+					local best, bestDist
+					for _ = 1, 6 do
+						local dir = Vector3.new(math.random() * 2 - 1, (math.random() * 2 - 1) * 0.4, math.random() * 2 - 1)
+						if dir.Magnitude < 0.05 then
+							dir = Vector3.xAxis
+						end
+						local spot = pos + dir.Unit * (40 + math.random() * 60)
+						local d = desync.murdererPos and (spot - desync.murdererPos).Magnitude or 999
+						if d >= 40 and (not bestDist or d > bestDist) then
+							best, bestDist = spot, d
+						end
+					end
+					fakePos = best or pos + Vector3.new(0, 80, 0)
+				elseif desyncCfg.mode == "Random" then
+					if not fakePos or now >= nextPick then
+						fakePos = randomSpot(pos, char)
+						nextPick = now + desyncCfg.interval / 1000
+					end
+				elseif desyncCfg.mode == "Orbit" then
+					local a = now * 3
+					fakePos = pos + Vector3.new(math.cos(a) * desyncCfg.radius * 0.3, 0, math.sin(a) * desyncCfg.radius * 0.3)
+				else
+					fakePos = pos + Vector3.new(0, 200, 0)
+				end
+				local realCF = hrp.CFrame
+				desync.real = realCF
+				desync.lastFakeAt = os.clock()
+				local sentPos = now * 40
+				desync.fakeCF = CFrame.new(fakePos) * CFrame.Angles(sentPos * 1.3 + math.random() * 6.28, sentPos + math.random() * 6.28, sentPos * 0.7 + math.random() * 6.28)
+				hrp.CFrame = desync.fakeCF
+				if sethiddenproperty then
+					pcall(sethiddenproperty, hrp, "NetworkIsSleeping", false)
+				end
+				local v = hrp.AssemblyLinearVelocity
+				desync.realVel = v
+				if v.Magnitude < 8 then
+					local a = math.random() * math.pi * 2
+					hrp.AssemblyLinearVelocity = Vector3.new(math.cos(a) * 12, 6, math.sin(a) * 12)
+				end
+			end)
+			pcall(function()
+				RunService:UnbindFromRenderStep("RockHubDesync")
+			end)
+			RunService:BindToRenderStep("RockHubDesync", Enum.RenderPriority.First.Value, function()
+				if not desync.real then
+					return
+				end
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					hrp.CFrame = desync.real
+					if desync.realVel then
+						hrp.AssemblyLinearVelocity = desync.realVel
+					end
+				end
+				desync.real, desync.realVel = nil, nil
+			end)
+			local vis = { char = nil, folder = nil, parts = {}, a0 = nil, a1 = nil }
+
+			local function clearGhost()
+				if vis.folder then
+					vis.folder:Destroy()
+				end
+				vis.folder, vis.char = nil, nil
+				table.clear(vis.parts)
+			end
+
+			local function buildGhost(char)
+				clearGhost()
+				vis.char = char
+				vis.folder = create("Model", { Name = "RockHubDesyncGhost", Parent = workspace.CurrentCamera })
+				for _, src in ipairs(char:GetChildren()) do
+					if src:IsA("BasePart") and src.Name ~= "HumanoidRootPart" then
+						local ok, g = pcall(function()
+							return src:Clone()
+						end)
+						if ok and g then
+							for _, c in ipairs(g:GetChildren()) do
+								if not c:IsA("DataModelMesh") then
+									c:Destroy()
+								end
+							end
+							pcall(function()
+								g.TextureID = ""
+							end)
+							g.Anchored, g.CanCollide, g.CanQuery, g.CanTouch, g.CastShadow = true, false, false, false, false
+							g.Material = Enum.Material.ForceField
+							g.Color = accentColor
+							g.Transparency = 0.2
+							g.Parent = vis.folder
+							vis.parts[src] = g
+						end
+					end
+				end
+				create("Highlight", {
+					Adornee = vis.folder,
+					FillTransparency = 1,
+					OutlineColor = accentColor,
+					OutlineTransparency = 0.3,
+					DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+					Parent = vis.folder,
+				})
+
+				local function makePoint()
+					local pt = create("Part", {
+						Anchored = true,
+						CanCollide = false,
+						CanQuery = false,
+						CanTouch = false,
+						Transparency = 1,
+						Size = Vector3.new(0.1, 0.1, 0.1),
+						Parent = vis.folder,
+					})
+					return create("Attachment", { Parent = pt }), pt
+				end
+
+				local a0, p0 = makePoint()
+				local a1, p1 = makePoint()
+				vis.p0, vis.p1 = p0, p1
+				create("Beam", {
+					Attachment0 = a0,
+					Attachment1 = a1,
+					FaceCamera = true,
+					LightEmission = 1,
+					LightInfluence = 0,
+					Width0 = 0.14,
+					Width1 = 0.14,
+					Segments = 1,
+					Color = ColorSequence.new(accentColor),
+					Transparency = NumberSequence.new(0.15, 0.55),
+					Parent = p0,
+				})
+			end
+
+			pcall(function()
+				RunService:UnbindFromRenderStep("RockHubDesyncVis")
+			end)
+			RunService:BindToRenderStep("RockHubDesyncVis", Enum.RenderPriority.First.Value + 1, function()
+				local char = player.Character
+				local hrp = char and char:FindFirstChild("HumanoidRootPart")
+				if not (desyncCfg.on or desync.force) or not desyncCfg.tracer or desync.pause > 0 or desync.gunHold or not hrp or not desync.fakeCF then
+					if vis.folder then
+						clearGhost()
+					end
+					return
+				end
+				if vis.char ~= char or not vis.folder or not vis.folder.Parent then
+					buildGhost(char)
+				end
+				local fakeCF = desync.fakeCF
+				local rootCf = hrp.CFrame
+				for src, g in pairs(vis.parts) do
+					if src.Parent then
+						g.CFrame = fakeCF * rootCf:ToObjectSpace(src.CFrame)
+					end
+				end
+				vis.p0.CFrame = rootCf
+				vis.p1.CFrame = fakeCF
+			end)
+			table.insert(connections, {
+				Disconnect = function()
+					pcall(function()
+						RunService:UnbindFromRenderStep("RockHubDesyncVis")
+					end)
+					clearGhost()
+				end,
+			})
+			table.insert(connections, {
+				Disconnect = function()
+					pcall(function()
+						RunService:UnbindFromRenderStep("RockHubDesync")
+					end)
+				end,
+			})
+			
+		end
+		do
+			local page = playersTab.page
+			playersTab.custom = true
+			local cards = {}
+			local roleCache = {}
+			local roleRemote
+			local spectating
+			local bangTarget, bangTrack
+			local bangStarted = 0
+
+			local function roleOf(p)
+				if findTool(p, "Knife") then
+					return "Murderer", Color3.fromRGB(255, 80, 80)
+				end
+				if findTool(p, "Gun") then
+					return "Sheriff", Color3.fromRGB(80, 160, 255)
+				end
+				local role = roleCache[p.Name]
+				if role == "Murderer" then
+					return "Murderer", Color3.fromRGB(255, 80, 80)
+				end
+				if role == "Sheriff" or role == "Hero" then
+					return role, Color3.fromRGB(80, 160, 255)
+				end
+				return "Innocent", dimColor
+			end
+
+			local function stopSpectate()
+				spectating = nil
+				local hum = getHumanoid()
+				local cam = workspace.CurrentCamera
+				if hum and cam then
+					cam.CameraType = Enum.CameraType.Custom
+					cam.CameraSubject = hum
+				end
+			end
+
+			local function toggleSpectate(target)
+				if spectating == target then
+					stopSpectate()
+					notify("Spectate", "back to your character")
+					return
+				end
+				local char = target.Character
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if not hum then
+					notify("Spectate", "player is not alive")
+					return
+				end
+				spectating = target
+				workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+				workspace.CurrentCamera.CameraSubject = hum
+				notify("Spectate", target.DisplayName)
+			end
+
+			local function stopBang()
+				bangTarget = nil
+				if bangTrack then
+					pcall(function()
+						bangTrack:Stop(0.15)
+						bangTrack:Destroy()
+					end)
+					bangTrack = nil
+				end
+			end
+
+			local function toggleBang(target)
+				if bangTarget == target then
+					stopBang()
+					notify("Bang", "stopped")
+					return
+				end
+				local targetChar = target.Character
+				local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+				local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+				local hum = getHumanoid()
+				if not (targetHum and targetHum.Health > 0 and targetRoot and hum and hum.Health > 0) then
+					notify("Bang", "player is not available")
+					return
+				end
+				stopBang()
+				bangTarget = target
+				bangStarted = os.clock()
+				local anim = Instance.new("Animation")
+				anim.AnimationId = hum.RigType == Enum.HumanoidRigType.R15 and "rbxassetid://5918726674" or "rbxassetid://148840371"
+				local ok, track = pcall(function()
+					return (hum:FindFirstChildOfClass("Animator") or hum):LoadAnimation(anim)
+				end)
+				anim:Destroy()
+				if ok and track then
+					track.Priority = Enum.AnimationPriority.Action4
+					track.Looped = true
+					track:Play(0.15)
+					bangTrack = track
+				end
+				notify("Bang", target.DisplayName .. " - press again to stop")
+			end
+
+			connect(RunService.Heartbeat, function()
+				if spectating then
+					local char = spectating.Character
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if not hum or hum.Health <= 0 then
+						stopSpectate()
+					end
+				end
+				if not bangTarget then
+					return
+				end
+				local myChar, targetChar = player.Character, bangTarget.Character
+				local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+				local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+				local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+				local targetHum = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+				if not (myRoot and myHum and myHum.Health > 0 and targetRoot and targetHum and targetHum.Health > 0) then
+					stopBang()
+					return
+				end
+				local pulse = math.sin((os.clock() - bangStarted) * 12) * 0.18
+				myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 1.15 + pulse)
+				myRoot.AssemblyLinearVelocity = Vector3.zero
+			end)
+
+			local function actionButton(parent, text, x, width, callback)
+				local button = create("TextButton", {
+					Text = text,
+					Font = Enum.Font.GothamBold,
+					TextSize = 9,
+					TextColor3 = textColor,
+					BackgroundColor3 = bgColor,
+					AutoButtonColor = false,
+					Position = UDim2.fromOffset(x, 54),
+					Size = UDim2.fromOffset(width, 22),
+					Parent = parent,
+				})
+				addCorner(button, 6)
+				local stroke = addStroke(button)
+				connect(button.MouseEnter, function()
+					tween(button, 0.15, { BackgroundColor3 = hoverColor, TextColor3 = accentColor })
+					tween(stroke, 0.15, { Color = accentColor })
+				end)
+				connect(button.MouseLeave, function()
+					tween(button, 0.15, { BackgroundColor3 = bgColor, TextColor3 = textColor })
+					tween(stroke, 0.15, { Color = strokeColor })
+				end)
+				connect(button.MouseButton1Click, function()
+					task.spawn(callback)
+				end)
+				return button
+			end
+
+			local function refreshCards()
+				for _, card in pairs(cards) do
+					card.frame:Destroy()
+				end
+				table.clear(cards)
+				local list = Players:GetPlayers()
+				table.sort(list, function(a, b)
+					return a.DisplayName:lower() < b.DisplayName:lower()
+				end)
+				local y = 48
+				for _, target in ipairs(list) do
+					if target == player then
+						continue
+					end
+					local frame = create("Frame", {
+						Position = UDim2.fromOffset(0, y),
+						Size = UDim2.new(1, -8, 0, 84),
+						BackgroundColor3 = panelColor,
+						Parent = page,
+					})
+					addCorner(frame, 9)
+					addStroke(frame)
+					local avatar = create("ImageLabel", {
+						Image = "",
+						BackgroundColor3 = elemColor,
+						AnchorPoint = Vector2.new(1, 0.5),
+						Position = UDim2.new(1, -8, 0.5, 0),
+						Size = UDim2.fromOffset(66, 66),
+						Parent = frame,
+					})
+					addCorner(avatar, 9)
+					addStroke(avatar)
+					create("TextLabel", {
+						Text = target.DisplayName,
+						Font = Enum.Font.GothamBold,
+						TextSize = 14,
+						TextColor3 = accentColor,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextTruncate = Enum.TextTruncate.AtEnd,
+						BackgroundTransparency = 1,
+						Position = UDim2.fromOffset(12, 7),
+						Size = UDim2.new(1, -240, 0, 17),
+						Parent = frame,
+					})
+					create("TextLabel", {
+						Text = "@" .. target.Name,
+						Font = Enum.Font.Gotham,
+						TextSize = 10,
+						TextColor3 = mutedColor,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextTruncate = Enum.TextTruncate.AtEnd,
+						BackgroundTransparency = 1,
+						Position = UDim2.fromOffset(12, 25),
+						Size = UDim2.new(1, -240, 0, 14),
+						Parent = frame,
+					})
+					local roleLabel = create("TextLabel", {
+						Text = "Innocent",
+						Font = Enum.Font.GothamBold,
+						TextSize = 10,
+						TextColor3 = dimColor,
+						TextXAlignment = Enum.TextXAlignment.Right,
+						BackgroundTransparency = 1,
+						Position = UDim2.new(1, -218, 0, 10),
+						Size = UDim2.fromOffset(130, 16),
+						Parent = frame,
+					})
+					actionButton(frame, "FLING", 12, 54, function()
+						if playerFlingAction then
+							playerFlingAction(target)
+						end
+					end)
+					actionButton(frame, "SPECTATE", 72, 68, function()
+						toggleSpectate(target)
+					end)
+					actionButton(frame, "BANG", 146, 50, function()
+						toggleBang(target)
+					end)
+					actionButton(frame, "KILL", 202, 48, function()
+						if findTool(player, "Knife") and playerKnifeKill then
+							playerKnifeKill(target)
+						elseif findTool(player, "Gun") and playerGunKill then
+							playerGunKill(target)
+						else
+							notify("Kill", "you need the knife or gun")
+						end
+					end)
+					cards[target] = { frame = frame, role = roleLabel }
+					task.spawn(function()
+						local ok, image = pcall(Players.GetUserThumbnailAsync, Players, target.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+						if ok and frame.Parent then
+							avatar.Image = image
+						end
+					end)
+					y += 92
+				end
+				page.CanvasSize = UDim2.fromOffset(0, y + 8)
+			end
+
+			connect(Players.PlayerAdded, refreshCards)
+			connect(Players.PlayerRemoving, function(leaving)
+				if spectating == leaving then
+					stopSpectate()
+				end
+				if bangTarget == leaving then
+					stopBang()
+				end
+				task.defer(refreshCards)
+			end)
+			task.spawn(function()
+				while gui.Parent do
+					if currentTab == playersTab then
+						if not roleRemote or not roleRemote.Parent then
+							roleRemote = game:GetService("ReplicatedStorage"):FindFirstChild("GetPlayerData", true)
+						end
+						if roleRemote and roleRemote:IsA("RemoteFunction") then
+							local ok, data = pcall(roleRemote.InvokeServer, roleRemote)
+							if ok and type(data) == "table" then
+								local nextRoles = {}
+								for name, info in pairs(data) do
+									if type(info) == "table" and type(info.Role) == "string" and not info.Dead and not info.Killed then
+										nextRoles[name] = info.Role
+									end
+								end
+								roleCache = nextRoles
+							end
+						end
+						for target, card in pairs(cards) do
+							if target.Parent and card.frame.Parent then
+								local role, color = roleOf(target)
+								card.role.Text = role
+								card.role.TextColor3 = color
+							end
+						end
+					end
+					task.wait(1)
+				end
+			end)
+			refreshCards()
+
+			stopPlayersActions = function()
+				stopSpectate()
+				stopBang()
+			end
+		end
+		do
+			local baseSize = UDim2.new(0.55, 0, 0, 0)
+			local bar = create("Frame", {
+				Name = "Search",
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 1, 10),
+				Size = baseSize + UDim2.fromOffset(0, 32),
+				BackgroundColor3 = bgColor,
+				ZIndex = 20,
+				Parent = main,
+			})
+			addCorner(bar, 10)
+			local barStroke = create("UIStroke", { Color = accentColor, Transparency = 0.45, Thickness = 1, Parent = bar })
+			addGradient(barStroke)
+			local barScale = create("UIScale", { Parent = bar })
+			local icon = create("Frame", {
+				Position = UDim2.fromOffset(12, 9.5),
+				Size = UDim2.fromOffset(13, 13),
+				BackgroundTransparency = 1,
+				ZIndex = 21,
+				Parent = bar,
+			})
+			local ring = create("Frame", { Size = UDim2.fromOffset(9, 9), BackgroundTransparency = 1, ZIndex = 21, Parent = icon })
+			makeRound(ring)
+			local ringStroke = create("UIStroke", { Color = dimColor, Thickness = 1.5, Parent = ring })
+			local handle = line(icon, 7.8, 7.8, 12, 12, 1.5, dimColor)
+			handle.ZIndex = 21
+			local iconScale = create("UIScale", { Parent = icon })
+			local box = create("TextBox", {
+				Text = "",
+				PlaceholderText = "Search...",
+				Font = Enum.Font.GothamMedium,
+				TextSize = 12,
+				TextColor3 = accentColor,
+				PlaceholderColor3 = mutedColor,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ClearTextOnFocus = false,
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(32, 0),
+				Size = UDim2.new(1, -100, 1, 0),
+				ZIndex = 21,
+				Parent = bar,
+			})
+			local hint = create("TextLabel", {
+				Text = "Ctrl  F",
+				Font = Enum.Font.GothamBold,
+				TextSize = 9,
+				TextColor3 = dimColor,
+				BackgroundColor3 = elemColor,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -8, 0.5, 0),
+				Size = UDim2.fromOffset(46, 18),
+				Visible = UserInputService.KeyboardEnabled,
+				ZIndex = 21,
+				Parent = bar,
+			})
+			addCorner(hint, 5)
+			addStroke(hint)
+			local resultLabel = create("TextLabel", {
+				Text = "",
+				Font = Enum.Font.GothamMedium,
+				TextSize = 10,
+				TextColor3 = dimColor,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -12, 0.5, 0),
+				Size = UDim2.fromOffset(80, 18),
+				Visible = false,
+				ZIndex = 21,
+				Parent = bar,
+			})
+
+			local function countMatches(tab)
+				if tab.custom then
+					return 0
+				end
+				local n = 0
+				for _, sec in ipairs(tab.sections) do
+					for _, item in ipairs(sec.items) do
+						if matchesSearch(item, sec, tab) then
+							n += 1
+						end
+					end
+				end
+				return n
+			end
+
+			local function firstMatch(tab)
+				for _, sec in ipairs(tab.sections) do
+					if sec.card.Visible then
+						for _, item in ipairs(sec.items) do
+							if item.row.Visible then
+								return item.row
+							end
+						end
+					end
+				end
+			end
+
+			local function flash(row)
+				if not row then
+					return
+				end
+				local st = create("UIStroke", { Color = accentColor, Thickness = 2, Parent = row })
+				local glow = create("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundColor3 = accentColor,
+					BackgroundTransparency = 0.8,
+					BorderSizePixel = 0,
+					ZIndex = 3,
+					Parent = row,
+				})
+				addCorner(glow, 7)
+				task.delay(0.15, function()
+					tween(glow, 0.9, { BackgroundTransparency = 1 })
+					tween(st, 1.2, { Transparency = 1 })
+				end)
+				task.delay(1.4, function()
+					st:Destroy()
+					glow:Destroy()
+				end)
+			end
+
+			local function apply()
+				local q = box.Text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+				if q == "" then
+					searchTerms = nil
+					resultLabel.Visible = false
+					hint.Visible = UserInputService.KeyboardEnabled and not box:IsFocused()
+					for _, t in ipairs(tabs) do
+						layoutTab(t)
+					end
+					return
+				end
+				local words = {}
+				for w in q:gmatch("%S+") do
+					table.insert(words, w)
+				end
+				searchTerms = words
+				hint.Visible = false
+				local total, best, bestCount = 0, nil, 0
+				for _, t in ipairs(tabs) do
+					local n = countMatches(t)
+					total += n
+					if n > bestCount then
+						best, bestCount = t, n
+					end
+				end
+				if currentTab and countMatches(currentTab) == 0 and best then
+					selectTab(best)
+				end
+				for _, t in ipairs(tabs) do
+					layoutTab(t)
+				end
+				if currentTab then
+					currentTab.page.CanvasPosition = Vector2.zero
+				end
+				resultLabel.Visible = true
+				resultLabel.Text = total == 0 and "nothing" or total .. " found"
+				resultLabel.TextColor3 = total == 0 and Color3.fromRGB(255, 120, 120) or dimColor
+			end
+
+			connect(box:GetPropertyChangedSignal("Text"), apply)
+			connect(box.Focused, function()
+				tween(barStroke, 0.2, { Transparency = 0 })
+				tween(ringStroke, 0.2, { Color = accentColor })
+				tween(handle, 0.2, { BackgroundColor3 = accentColor })
+				iconScale.Scale = 0.8
+				tween(iconScale, 0.35, { Scale = 1 }, Enum.EasingDirection.Out, Enum.EasingStyle.Back)
+				barScale.Scale = 0.97
+				tween(barScale, 0.3, { Scale = 1 }, Enum.EasingDirection.Out, Enum.EasingStyle.Back)
+				hint.Visible = false
+			end)
+			connect(box.FocusLost, function(enter)
+				tween(barStroke, 0.2, { Transparency = 0.45 })
+				tween(ringStroke, 0.2, { Color = dimColor })
+				tween(handle, 0.2, { BackgroundColor3 = dimColor })
+				if box.Text == "" then
+					hint.Visible = UserInputService.KeyboardEnabled
+				end
+				if enter and searchTerms and currentTab then
+					flash(firstMatch(currentTab))
+				end
+			end)
+			connect(UserInputService.InputBegan, function(input)
+				if input.UserInputType ~= Enum.UserInputType.Keyboard then
+					return
+				end
+				local k = input.KeyCode
+				if k == Enum.KeyCode.F and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) or UserInputService:IsKeyDown(Enum.KeyCode.LeftSuper) or UserInputService:IsKeyDown(Enum.KeyCode.RightSuper)) then
+					if not menuOpen then
+						setMenuOpen(true)
+					end
+					task.defer(function()
+						box:CaptureFocus()
+					end)
+					return
+				end
+				if k == Enum.KeyCode.Escape and (box:IsFocused() or box.Text ~= "") then
+					box.Text = ""
+					box:ReleaseFocus()
+				end
+			end)
+		end
+		selectTab(mainTab)
+		for _, r in ipairs(registry) do
+			local v = config[r.key]
+			if v ~= nil then
+				pcall(r.set, v)
+			end
+		end
+		dirty = false
+		loading = false
+
+		_G.RockHubUnload = function()
+			if droneCleanup then pcall(droneCleanup) end
+			for _, c in ipairs(connections) do
+				c:Disconnect()
+			end
+			table.clear(connections)
+			keyListener = nil
+			if stopShader then
+				pcall(stopShader)
+			end
+			if stopEsp then
+				pcall(stopEsp)
+			end
+			if stopSpin then
+				pcall(stopSpin)
+			end
+			if stopRoleFling then
+				pcall(stopRoleFling)
+			end
+			if stopPlayersActions then
+				pcall(stopPlayersActions)
+			end
+			pcall(disableNoclip)
+			pcall(disableAntiFling)
+			if stopVoteDupe then
+				pcall(stopVoteDupe)
+			end
+			if stopBunnyModel then
+				pcall(stopBunnyModel)
+			end
+			if stopAvatar then
+				pcall(stopAvatar)
+			end
+			if stopAura then
+				pcall(stopAura)
+			end
+			if stopOrbs then
+				pcall(stopOrbs)
+			end
+			if stopSkyWorms then
+				pcall(stopSkyWorms)
+			end
+			if stopCursor then
+				pcall(stopCursor)
+			end
+			if stopAwm then
+				pcall(stopAwm)
+			end
+			if stopSkinChanger then
+				pcall(stopSkinChanger)
+			end
+			if dirty then
+				saveConfig()
+			end
+			if stopBackTrack then
+				pcall(stopBackTrack)
+			end
+			if stopAnims then
+				pcall(stopAnims)
+			end
+			if lobbyBrand then
+				lobbyBrand:Destroy()
+				lobbyBrand = nil
+			end
+			local hum = getHumanoid()
+			if hum then
+				if charMods.speed then
+					hum.WalkSpeed = 16
+				end
+				if charMods.jump then
+					hum.JumpPower = 50
+				end
+			end
+			blur:Destroy()
+			gui:Destroy()
+			_G.RockHubUnload = nil
+		end
+
 		local TextService2 = game:GetService("TextService")
 
 		local function playIntro()
@@ -5801,8 +12519,8 @@ end
 			task.wait(0.35)
 			local steps = {
 				{ "loading interface", 0.3 },
-				{ "loading drone controls", 0.55 },
-				{ "setting up interface", 0.8 },
+				{ "loading movement", 0.55 },
+				{ "loading visuals", 0.8 },
 				{ "done", 1 },
 			}
 			for _, s in ipairs(steps) do
@@ -5844,6 +12562,5 @@ end
 		end
 
 		task.spawn(playIntro)
-
-		end)(...)
+	end)(...)
 end)(...)
