@@ -518,7 +518,9 @@ local sidebar = create("ScrollingFrame", {
 	Size = UDim2.new(0, 170, 1, -39),
 	BackgroundTransparency = 1,
 	BorderSizePixel = 0,
-	ScrollBarThickness = 0,
+	ScrollBarThickness = 4,
+	ScrollBarImageColor3 = accentColor,
+	ScrollBarImageTransparency = 0.25,
 	ScrollingDirection = Enum.ScrollingDirection.Y,
 	ElasticBehavior = Enum.ElasticBehavior.Never,
 	ScrollingEnabled = true,
@@ -578,7 +580,7 @@ end
 
 local tabList = create("Frame", {
 	Position = UDim2.fromOffset(8, 10),
-	Size = UDim2.new(1, -16, 1, -10),
+	Size = UDim2.new(1, -16, 0, 0),
 	BackgroundTransparency = 1,
 	ZIndex = 2,
 	Parent = sidebar,
@@ -586,7 +588,26 @@ local tabList = create("Frame", {
 local tabLayout = create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = tabList })
 
 local function updateSidebarCanvas()
-	sidebar.CanvasSize = UDim2.fromOffset(0, 10 + tabLayout.AbsoluteContentSize.Y + 24)
+	local contentHeight = tabLayout.AbsoluteContentSize.Y
+	tabList.Size = UDim2.new(1, -16, 0, contentHeight)
+	sidebar.CanvasSize = UDim2.fromOffset(0, math.max(sidebar.AbsoluteSize.Y, 10 + contentHeight + 16))
+end
+
+local ensureTabVisible
+ensureTabVisible = function(tab)
+	if not tab or not tab.btn then return end
+	task.defer(function()
+		if not tab.btn.Parent then return end
+		local viewTop = sidebar.CanvasPosition.Y
+		local viewHeight = sidebar.AbsoluteSize.Y
+		local top = tab.btn.AbsolutePosition.Y - sidebar.AbsolutePosition.Y + viewTop
+		local bottom = top + tab.btn.AbsoluteSize.Y
+		if top < viewTop + 4 then
+			sidebar.CanvasPosition = Vector2.new(0, math.max(0, top - 4))
+		elseif bottom > viewTop + viewHeight - 4 then
+			sidebar.CanvasPosition = Vector2.new(0, bottom - viewHeight + 4)
+		end
+	end)
 end
 
 tabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateSidebarCanvas)
@@ -617,6 +638,7 @@ local fadeOverlay = create("Frame", {
 local fadeTween
 local tabs = {}
 local currentTab
+local ensureTabVisible
 
 local function selectTab(tab)
 	if currentTab == tab then
@@ -656,6 +678,7 @@ local function selectTab(tab)
 	end
 	fadeOverlay.BackgroundTransparency = 0
 	fadeTween = tween(fadeOverlay, 0.3, { BackgroundTransparency = 1 })
+	if ensureTabVisible then ensureTabVisible(tab) end
 end
 
 return (function(...)
@@ -12356,7 +12379,6 @@ do
 	local rr9Tabs = {}
 	local tabAliases = {
 		Main = mainTab,
-		Player = playersTab,
 		Visuals = visualsTab,
 		["UI Settings"] = settingsTab,
 	}
@@ -12374,7 +12396,7 @@ do
 	addCorner(rr9KeybindFrame, 10)
 	addStroke(rr9KeybindFrame, accentColor)
 	create("TextLabel", {
-		Text = "RR9 KEYBINDS",
+		Text = "KEYBINDS",
 		Font = Enum.Font.GothamBold,
 		TextSize = 10,
 		TextColor3 = accentColor,
@@ -13007,7 +13029,17 @@ do
 	tabObjectMeta.__index = function(self, key)
 		if key == "AddLeftGroupbox" or key == "AddRightGroupbox" then
 			return function(_, title, icon)
-				local section = addSection(self._tab, tostring(title or "RR9"))
+				local sectionName = tostring(title or "Section")
+				local subgroup
+				if self._tab == visualsTab then
+					local lowered = string.lower(sectionName)
+					if lowered:find("custom") or lowered:find("ocean") then
+						subgroup = "Shader"
+					else
+						subgroup = "ESP"
+					end
+				end
+				local section = addSection(self._tab, sectionName, subgroup)
 				return groupObject(section, self._sourceName)
 			end
 		end
@@ -13017,8 +13049,8 @@ do
 		if rr9Tabs[sourceName] then return rr9Tabs[sourceName] end
 		local page = tabAliases[sourceName]
 		if not page then
-			local display = sourceName == "Tp" and "RR9 Teleport" or (sourceName == "Keybind" and "RR9 Keybinds" or ((sourceName == "MapBreak" or sourceName == "MapBreaks") and "RR9 Map Breaks" or ("RR9 " .. sourceName)))
-			page = addTab(display, iconName or "settings", "9rr · Fling Things and People")
+			local display = sourceName == "Tp" and "Teleport" or (sourceName == "Keybind" and "Keybinds" or ((sourceName == "MapBreaks" or sourceName == "MapBreak") and "Map Breaks" or sourceName))
+			page = addTab(display, iconName or "settings", "Fling Things and People")
 		end
 		local wrapped = setmetatable({ _tab = page, _sourceName = sourceName }, tabObjectMeta)
 		rr9Tabs[sourceName] = wrapped
@@ -13094,8 +13126,8 @@ do
 	function themeManager:SetFolder(_) end
 	function themeManager:ApplyToTab(tab)
 		if tab and tab.AddLeftGroupbox then
-			local g = tab:AddLeftGroupbox("RR9 Appearance", "palette")
-			g:AddLabel("RR9 controls use the current RockHub theme.")
+			local g = tab:AddLeftGroupbox("Appearance", "palette")
+			g:AddLabel("Controls use the current RockHub theme.")
 		end
 	end
 	local saveManager = {}
@@ -13106,8 +13138,8 @@ do
 	function saveManager:SetSubFolder(_) end
 	function saveManager:BuildConfigSection(tab)
 		if tab and tab.AddRightGroupbox then
-			local g = tab:AddRightGroupbox("RR9 Settings", "save")
-			g:AddLabel("RR9 values are saved with the existing RockHub profile.")
+			local g = tab:AddRightGroupbox("Profiles", "save")
+			g:AddLabel("Values are saved with the existing RockHub profile.")
 		end
 	end
 
